@@ -1,0 +1,6 @@
+apiVersion: oracle.iwhalecloud.com/v1
+kind: OracleCluster
+metadata:
+  name: oraclecluster-sample
+spec:
+  # TODO(user): Add fields here

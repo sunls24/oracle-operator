@@ -1,0 +1,24 @@
+# permissions for end users to edit oracleclusters.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: oraclecluster-editor-role
+rules:
+- apiGroups:
+  - oracle.iwhalecloud.com
+  resources:
+  - oracleclusters
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - oracle.iwhalecloud.com
+  resources:
+  - oracleclusters/status
+  verbs:
+  - get
