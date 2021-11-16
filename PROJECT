@@ -1,0 +1,6 @@
+domain: iwhalecloud.com
+layout:
+- go.kubebuilder.io/v3
+projectName: oracle-operator
+repo: oracle-operator
+version: "3"
