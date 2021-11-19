@@ -17,6 +17,8 @@ limitations under the License.
 package v1
 
 import (
+	"fmt"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -25,17 +27,18 @@ import (
 
 // OracleClusterSpec defines the desired state of OracleCluster
 type OracleClusterSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	Image    string `json:"image,omitempty"`
+	CLIImage string `json:"cliImage,omitempty"`
 
-	// Foo is an example field of OracleCluster. Edit oraclecluster_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	Replicas *int32 `json:"replicas,omitempty"`
+	Password string `json:"password,omitempty"`
+
+	PodSpec    PodSpec    `json:"podSpec,omitempty"`
+	VolumeSpec VolumeSpec `json:"volumeSpec,omitempty"`
 }
 
 // OracleClusterStatus defines the observed state of OracleCluster
 type OracleClusterStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
 }
 
 //+kubebuilder:object:root=true
@@ -57,6 +60,54 @@ type OracleClusterList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []OracleCluster `json:"items"`
+}
+
+type PodSpec struct {
+	ImagePullPolicy corev1.PullPolicy           `json:"imagePullPolicy,omitempty"`
+	Resources       corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	OracleEnv    []corev1.EnvVar `json:"oracleEnv,omitempty"`
+	OracleCLIEnv []corev1.EnvVar `json:"oracleCliEnv,omitempty"`
+}
+
+type VolumeSpec struct {
+	//EmptyDir *corev1.EmptyDirVolumeSource `json:"emptyDir,omitempty"`
+	//HostPath *corev1.HostPathVolumeSource `json:"hostPath,omitempty"`
+	PersistentVolumeClaim *corev1.PersistentVolumeClaimSpec `json:"persistentVolumeClaim,omitempty"`
+}
+
+func (in *OracleCluster) UniqueName() string {
+	return fmt.Sprintf("oc-%s", in.Name)
+}
+
+func (in *OracleCluster) ClusterLabel() map[string]string {
+	return map[string]string{"cluster": in.Name}
+}
+
+func (in *OracleCluster) SetObject(obj *metav1.ObjectMeta) {
+	obj.Namespace = in.Namespace
+	obj.Name = in.UniqueName()
+	obj.Labels = in.ClusterLabel()
+}
+
+func (in *OracleCluster) AddFinalizer(finalizer string) {
+	for _, f := range in.Finalizers {
+		if f == finalizer {
+			return
+		}
+	}
+	in.Finalizers = append(in.Finalizers, finalizer)
+}
+
+func (in *OracleCluster) DeleteFinalizer(finalizer string) {
+	var newList []string
+	for _, f := range in.Finalizers {
+		if f == finalizer {
+			continue
+		}
+		newList = append(newList, f)
+	}
+	in.Finalizers = newList
 }
 
 func init() {
