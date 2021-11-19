@@ -18,6 +18,7 @@ package v1
 
 import (
 	"fmt"
+	appv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -32,6 +33,7 @@ type OracleClusterSpec struct {
 
 	Replicas *int32 `json:"replicas,omitempty"`
 	Password string `json:"password,omitempty"`
+	NodePort int32  `json:"nodePort,omitempty"`
 
 	PodSpec    PodSpec    `json:"podSpec,omitempty"`
 	VolumeSpec VolumeSpec `json:"volumeSpec,omitempty"`
@@ -39,6 +41,7 @@ type OracleClusterSpec struct {
 
 // OracleClusterStatus defines the observed state of OracleCluster
 type OracleClusterStatus struct {
+	Ready corev1.ConditionStatus `json:"ready,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -108,6 +111,13 @@ func (in *OracleCluster) DeleteFinalizer(finalizer string) {
 		newList = append(newList, f)
 	}
 	in.Finalizers = newList
+}
+
+func (in *OracleCluster) SetStatus(deploy *appv1.Deployment) {
+	in.Status.Ready = corev1.ConditionFalse
+	if deploy.Status.ReadyReplicas == *in.Spec.Replicas {
+		in.Status.Ready = corev1.ConditionTrue
+	}
 }
 
 func init() {

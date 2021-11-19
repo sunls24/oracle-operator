@@ -21,6 +21,7 @@ import (
 	"github.com/go-logr/logr"
 	appv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -32,7 +33,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 // OracleClusterReconciler reconciles a OracleCluster object
@@ -62,31 +62,39 @@ func (r *OracleClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	err := r.Get(ctx, req.NamespacedName, o)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			return reconcile.Result{}, nil
+			return ctrl.Result{}, nil
 		}
-		return reconcile.Result{}, err
+		return ctrl.Result{}, err
+	}
+
+	if o.DeletionTimestamp != nil {
+		return ctrl.Result{}, nil
 	}
 
 	r.log.Info("Start Reconcile")
-
-	defer r.updateStatus(o.DeepCopy(), o)
+	old := o.DeepCopy()
 
 	err = r.reconcileSecret(ctx, o)
 	if err != nil {
-		return reconcile.Result{}, err
+		return ctrl.Result{}, err
 	}
 
 	err = r.reconcilePVC(ctx, o)
 	if err != nil {
-		return reconcile.Result{}, err
+		return ctrl.Result{}, err
 	}
 
 	err = r.reconcileSVC(ctx, o)
 	if err != nil {
-		return reconcile.Result{}, err
+		return ctrl.Result{}, err
 	}
 
 	err = r.reconcileDeploy(ctx, o)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	err = r.updateCluster(ctx, old, o)
 	return ctrl.Result{}, err
 }
 
@@ -132,21 +140,9 @@ func (r *OracleClusterReconciler) reconcileSVC(ctx context.Context, o *oraclev1.
 	operationResult, err := ctrl.CreateOrUpdate(ctx, r.Client, svc, func() error {
 		svc.Spec.Type = corev1.ServiceTypeNodePort
 		svc.Spec.Ports = []corev1.ServicePort{
-			{
-				Name:     "listener",
-				Port:     1521,
-				Protocol: corev1.ProtocolTCP,
-			},
-			{
-				Name:     "xmldb",
-				Port:     5500,
-				Protocol: corev1.ProtocolTCP,
-			},
-			{
-				Name:     "tty",
-				Port:     8080,
-				Protocol: corev1.ProtocolTCP,
-			},
+			{Name: "listener", Port: 1521, NodePort: o.Spec.NodePort},
+			{Name: "xmldb", Port: 5500},
+			{Name: "tty", Port: 8080},
 		}
 		svc.Spec.Selector = o.ClusterLabel()
 		return ctrl.SetControllerReference(o, svc, r.Scheme)
@@ -159,6 +155,7 @@ func (r *OracleClusterReconciler) reconcileDeploy(ctx context.Context, o *oracle
 	deploy := &appv1.Deployment{}
 	o.SetObject(&deploy.ObjectMeta)
 	operationResult, err := ctrl.CreateOrUpdate(ctx, r.Client, deploy, func() error {
+		o.SetStatus(deploy)
 		deploy.Spec.Replicas = o.Spec.Replicas
 
 		var maxSurge = intstr.FromInt(100)
@@ -240,8 +237,12 @@ func (r *OracleClusterReconciler) reconcileDeploy(ctx context.Context, o *oracle
 	return err
 }
 
-func (r *OracleClusterReconciler) updateStatus(old, o *oraclev1.OracleCluster) {
-
+func (r *OracleClusterReconciler) updateCluster(ctx context.Context, old, o *oraclev1.OracleCluster) error {
+	if equality.Semantic.DeepEqual(old.Status, o.Status) {
+		return nil
+	}
+	r.log.Info("update status", "old", old.Status, "new", o.Status)
+	return r.Status().Update(ctx, o)
 }
 
 // SetupWithManager sets up the controller with the Manager.
