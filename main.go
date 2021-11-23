@@ -18,6 +18,7 @@ package main
 
 import (
 	"flag"
+	"oracle-operator/utils/constants"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -71,7 +72,7 @@ func main() {
 		Port:                   9443,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "43e7cade.iwhalecloud.com",
+		LeaderElectionID:       constants.DefaultLeaderElectionID,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")

@@ -26,12 +26,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/tools/record"
 	oraclev1 "oracle-operator/api/v1"
 	"oracle-operator/utils"
 	"oracle-operator/utils/constants"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -40,12 +41,15 @@ type OracleClusterReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
-	log logr.Logger
+	log      logr.Logger
+	recorder record.EventRecorder
 }
 
 //+kubebuilder:rbac:groups=oracle.iwhalecloud.com,resources=oracleclusters,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=oracle.iwhalecloud.com,resources=oracleclusters/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=oracle.iwhalecloud.com,resources=oracleclusters/finalizers,verbs=update
+//+kubebuilder:rbac:groups=core,resources=secrets;services;events;persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -73,6 +77,7 @@ func (r *OracleClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	r.log.Info("Start Reconcile")
 	old := o.DeepCopy()
+	o.SetDefault()
 
 	err = r.reconcileSecret(ctx, o)
 	if err != nil {
@@ -113,7 +118,11 @@ func (r *OracleClusterReconciler) reconcileSecret(ctx context.Context, o *oracle
 		return err
 	}
 	secret.Data = map[string][]byte{constants.OraclePWD: []byte(o.Spec.Password)}
-	return r.Create(ctx, secret)
+	err = r.Create(ctx, secret)
+	if err == nil {
+		r.recorder.Eventf(o, corev1.EventTypeNormal, constants.ReasonSuccessfulCreate, "create Secret %s successful", secret.Name)
+	}
+	return err
 }
 
 func (r *OracleClusterReconciler) reconcilePVC(ctx context.Context, o *oraclev1.OracleCluster) error {
@@ -131,7 +140,11 @@ func (r *OracleClusterReconciler) reconcilePVC(ctx context.Context, o *oraclev1.
 		return err
 	}
 	pvc.Spec = *o.Spec.VolumeSpec.PersistentVolumeClaim
-	return r.Create(ctx, pvc)
+	err = r.Create(ctx, pvc)
+	if err == nil {
+		r.recorder.Eventf(o, corev1.EventTypeNormal, constants.ReasonSuccessfulCreate, "create PersistentVolumeClaim %s successful", pvc.Name)
+	}
+	return err
 }
 
 func (r *OracleClusterReconciler) reconcileSVC(ctx context.Context, o *oraclev1.OracleCluster) error {
@@ -148,6 +161,12 @@ func (r *OracleClusterReconciler) reconcileSVC(ctx context.Context, o *oraclev1.
 		return ctrl.SetControllerReference(o, svc, r.Scheme)
 	})
 	r.log.Info("Reconcile SVC", "OperationResult", operationResult)
+	switch operationResult {
+	case controllerutil.OperationResultCreated:
+		r.recorder.Eventf(o, corev1.EventTypeNormal, constants.ReasonSuccessfulCreate, "create Service %s successful", svc.Name)
+	default:
+		r.recorder.Eventf(o, corev1.EventTypeNormal, constants.ReasonReconciling, "reconciling Service %s, OperationResult: %s", svc.Name, operationResult)
+	}
 	return err
 }
 
@@ -157,17 +176,16 @@ func (r *OracleClusterReconciler) reconcileDeploy(ctx context.Context, o *oracle
 	operationResult, err := ctrl.CreateOrUpdate(ctx, r.Client, deploy, func() error {
 		o.SetStatus(deploy)
 		deploy.Spec.Replicas = o.Spec.Replicas
-
-		var maxSurge = intstr.FromInt(100)
-		var maxUnavailable = intstr.FromInt(100)
-		deploy.Spec.Strategy = appv1.DeploymentStrategy{Type: appv1.RollingUpdateDeploymentStrategyType, RollingUpdate: &appv1.RollingUpdateDeployment{MaxSurge: &maxSurge, MaxUnavailable: &maxUnavailable}}
-
+		if o.Spec.PodSpec.Strategy != nil {
+			deploy.Spec.Strategy = *o.Spec.PodSpec.Strategy
+		}
 		deploy.Spec.Selector = &metav1.LabelSelector{MatchLabels: o.ClusterLabel()}
 
 		podSpec := corev1.PodTemplateSpec{}
 		podSpec.Labels = o.ClusterLabel()
-		podSpec.Spec.TerminationGracePeriodSeconds = new(int64)
-		*podSpec.Spec.TerminationGracePeriodSeconds = constants.TerminationGracePeriodSeconds
+		if o.Spec.PodSpec.TerminationGracePeriodSeconds != nil {
+			podSpec.Spec.TerminationGracePeriodSeconds = o.Spec.PodSpec.TerminationGracePeriodSeconds
+		}
 
 		securityContext := &corev1.PodSecurityContext{RunAsUser: new(int64), FSGroup: new(int64)}
 		*securityContext.RunAsUser = constants.SecurityContextRunAsUser
@@ -192,19 +210,13 @@ func (r *OracleClusterReconciler) reconcileDeploy(ctx context.Context, o *oracle
 			{Name: "INIT_PGA_SIZE", Value: "1024"},
 		}...)
 		oracleEnv = utils.MergeEnv(oracleEnv, o.Spec.PodSpec.OracleEnv)
-
 		oracleCLIEnv := utils.MergeEnv(baseEnv, o.Spec.PodSpec.OracleCLIEnv)
-
-		var imagePullPolicy = constants.DefaultPullPolicy
-		if len(o.Spec.PodSpec.ImagePullPolicy) != 0 {
-			imagePullPolicy = o.Spec.PodSpec.ImagePullPolicy
-		}
 
 		podSpec.Spec.Containers = []corev1.Container{
 			{
 				Name:            constants.ContainerOracle,
 				Image:           o.Spec.Image,
-				ImagePullPolicy: imagePullPolicy,
+				ImagePullPolicy: o.Spec.PodSpec.ImagePullPolicy,
 				Ports:           []corev1.ContainerPort{{ContainerPort: 1521}, {ContainerPort: 5500}},
 				ReadinessProbe: &corev1.Probe{
 					Handler: corev1.Handler{
@@ -223,7 +235,7 @@ func (r *OracleClusterReconciler) reconcileDeploy(ctx context.Context, o *oracle
 			{
 				Name:            constants.ContainerOracleCli,
 				Image:           o.Spec.CLIImage,
-				ImagePullPolicy: imagePullPolicy,
+				ImagePullPolicy: o.Spec.PodSpec.ImagePullPolicy,
 				Ports:           []corev1.ContainerPort{{ContainerPort: 8080}},
 				Env:             oracleCLIEnv,
 			},
@@ -234,6 +246,12 @@ func (r *OracleClusterReconciler) reconcileDeploy(ctx context.Context, o *oracle
 		return ctrl.SetControllerReference(o, deploy, r.Scheme)
 	})
 	r.log.Info("Reconcile Deployment", "OperationResult", operationResult)
+	switch operationResult {
+	case controllerutil.OperationResultCreated:
+		r.recorder.Eventf(o, corev1.EventTypeNormal, constants.ReasonSuccessfulCreate, "create Deployment %s successful", deploy.Name)
+	default:
+		r.recorder.Eventf(o, corev1.EventTypeNormal, constants.ReasonReconciling, "reconciling Deployment %s, OperationResult: %s", deploy.Name, operationResult)
+	}
 	return err
 }
 
@@ -247,6 +265,7 @@ func (r *OracleClusterReconciler) updateCluster(ctx context.Context, old, o *ora
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *OracleClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	r.recorder = mgr.GetEventRecorderFor("oraclecluster-controller")
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&oraclev1.OracleCluster{}).
 		Complete(r)

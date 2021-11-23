@@ -21,6 +21,7 @@ import (
 	appv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"oracle-operator/utils/constants"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -46,6 +47,9 @@ type OracleClusterStatus struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+//+kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.ready",description="The cluster status"
+//+kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+//+kubebuilder:resource:shortName=oracle
 
 // OracleCluster is the Schema for the oracleclusters API
 type OracleCluster struct {
@@ -71,6 +75,9 @@ type PodSpec struct {
 
 	OracleEnv    []corev1.EnvVar `json:"oracleEnv,omitempty"`
 	OracleCLIEnv []corev1.EnvVar `json:"oracleCliEnv,omitempty"`
+
+	TerminationGracePeriodSeconds *int64                    `json:"terminationGracePeriodSeconds,omitempty"`
+	Strategy                      *appv1.DeploymentStrategy `json:"strategy,omitempty"`
 }
 
 type VolumeSpec struct {
@@ -80,11 +87,11 @@ type VolumeSpec struct {
 }
 
 func (in *OracleCluster) UniqueName() string {
-	return fmt.Sprintf("oc-%s", in.Name)
+	return fmt.Sprintf("%s-oracle", in.Name)
 }
 
 func (in *OracleCluster) ClusterLabel() map[string]string {
-	return map[string]string{"cluster": in.Name}
+	return map[string]string{"oracle": in.Name}
 }
 
 func (in *OracleCluster) SetObject(obj *metav1.ObjectMeta) {
@@ -117,6 +124,12 @@ func (in *OracleCluster) SetStatus(deploy *appv1.Deployment) {
 	in.Status.Ready = corev1.ConditionFalse
 	if deploy.Status.ReadyReplicas == *in.Spec.Replicas {
 		in.Status.Ready = corev1.ConditionTrue
+	}
+}
+
+func (in *OracleCluster) SetDefault() {
+	if len(in.Spec.PodSpec.ImagePullPolicy) == 0 {
+		in.Spec.PodSpec.ImagePullPolicy = constants.DefaultPullPolicy
 	}
 }
 

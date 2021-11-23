@@ -1,0 +1,58 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: oracle-operator
+rules:
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - events
+      - persistentvolumeclaims
+      - secrets
+      - services
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - oracle.iwhalecloud.com
+    resources:
+      - oracleclusters
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - oracle.iwhalecloud.com
+    resources:
+      - oracleclusters/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - oracle.iwhalecloud.com
+    resources:
+      - oracleclusters/status
+    verbs:
+      - get
+      - patch
+      - update

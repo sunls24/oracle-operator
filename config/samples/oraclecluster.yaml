@@ -1,12 +1,14 @@
 apiVersion: oracle.iwhalecloud.com/v1
 kind: OracleCluster
 metadata:
-  name: oraclecluster-sample
+  name: oracle-samples
+  namespace: default
 spec:
   image: 10.10.236.107:8099/k8s/oracle/container-registry.oracle.com/database/enterprise:19.3.0.0
   cliImage: 10.10.236.107:8099/oracle/instantclient:19-gotty-3
   replicas: 1
-  password: enRlc29mdA==
+  password: enRlc29mdA==  // ztesoft
+  nodePort: 32233
   podSpec:
     imagePullPolicy: Always
     resources:
