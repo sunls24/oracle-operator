@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"encoding/base64"
 	"github.com/go-logr/logr"
 	appv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -114,10 +115,15 @@ func (r *OracleClusterReconciler) reconcileSecret(ctx context.Context, o *oracle
 	}
 
 	o.SetObject(&secret.ObjectMeta)
+	pwd, err := base64.StdEncoding.DecodeString(o.Spec.Password)
+	if err != nil {
+		r.log.Error(err, ".spec.password must be base64")
+		return err
+	}
 	if err = ctrl.SetControllerReference(o, secret, r.Scheme); err != nil {
 		return err
 	}
-	secret.Data = map[string][]byte{constants.OraclePWD: []byte(o.Spec.Password)}
+	secret.Data = map[string][]byte{constants.OraclePWD: pwd}
 	return r.eventCreated(r.Create(ctx, secret), o, "Secret", secret.Name)
 }
 
