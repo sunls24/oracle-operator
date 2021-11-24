@@ -19,7 +19,9 @@ const (
 )
 
 const (
-	DefaultPullPolicy = corev1.PullIfNotPresent
+	DefaultPullPolicy  = corev1.PullIfNotPresent
+	DefaultInitSGASize = "4096"
+	DefaultInitPGASize = "1024"
 )
 
 const (

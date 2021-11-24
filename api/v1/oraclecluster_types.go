@@ -22,6 +22,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"oracle-operator/utils/constants"
+	"strconv"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -86,7 +87,7 @@ type VolumeSpec struct {
 	PersistentVolumeClaim *corev1.PersistentVolumeClaimSpec `json:"persistentVolumeClaim,omitempty"`
 }
 
-func (in *OracleCluster) UniqueName() string {
+func (in *OracleCluster) UniteName() string {
 	return fmt.Sprintf("%s-oracle", in.Name)
 }
 
@@ -96,8 +97,36 @@ func (in *OracleCluster) ClusterLabel() map[string]string {
 
 func (in *OracleCluster) SetObject(obj *metav1.ObjectMeta) {
 	obj.Namespace = in.Namespace
-	obj.Name = in.UniqueName()
+	obj.Name = in.UniteName()
 	obj.Labels = in.ClusterLabel()
+}
+
+func (in *OracleCluster) MemoryValue() int64 {
+	var res = in.Spec.PodSpec.Resources
+	var mem = res.Limits.Memory().Value()
+	if mem == 0 {
+		mem = res.Requests.Memory().Value()
+	}
+	if mem != 0 {
+		mem /= 1048576 // 1024 * 1024
+	}
+	return mem
+}
+
+func (in *OracleCluster) InitSGASize(memory int64) string {
+	if memory == 0 {
+		return constants.DefaultInitSGASize
+	}
+	// 内存*80%*80%
+	return strconv.Itoa(int(float64(memory) * 0.64))
+}
+
+func (in *OracleCluster) InitPGASize(memory int64) string {
+	if memory == 0 {
+		return constants.DefaultInitPGASize
+	}
+	// 内存*80%*20%
+	return strconv.Itoa(int(float64(memory) * 0.16))
 }
 
 func (in *OracleCluster) AddFinalizer(finalizer string) {

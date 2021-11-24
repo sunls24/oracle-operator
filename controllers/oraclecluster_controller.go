@@ -106,7 +106,7 @@ func (r *OracleClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 func (r *OracleClusterReconciler) reconcileSecret(ctx context.Context, o *oraclev1.OracleCluster) error {
 	r.log.Info("Reconcile Secret")
 	secret := &corev1.Secret{}
-	err := r.Get(ctx, types.NamespacedName{Name: o.UniqueName(), Namespace: o.Namespace}, secret)
+	err := r.Get(ctx, types.NamespacedName{Name: o.UniteName(), Namespace: o.Namespace}, secret)
 	if err == nil {
 		return nil
 	} else if !errors.IsNotFound(err) {
@@ -118,17 +118,13 @@ func (r *OracleClusterReconciler) reconcileSecret(ctx context.Context, o *oracle
 		return err
 	}
 	secret.Data = map[string][]byte{constants.OraclePWD: []byte(o.Spec.Password)}
-	err = r.Create(ctx, secret)
-	if err == nil {
-		r.recorder.Eventf(o, corev1.EventTypeNormal, constants.ReasonSuccessfulCreate, "create Secret %s successful", secret.Name)
-	}
-	return err
+	return r.eventCreated(r.Create(ctx, secret), o, "Secret", secret.Name)
 }
 
 func (r *OracleClusterReconciler) reconcilePVC(ctx context.Context, o *oraclev1.OracleCluster) error {
 	r.log.Info("Reconcile PVC")
 	pvc := &corev1.PersistentVolumeClaim{}
-	err := r.Get(ctx, types.NamespacedName{Name: o.UniqueName(), Namespace: o.Namespace}, pvc)
+	err := r.Get(ctx, types.NamespacedName{Name: o.UniteName(), Namespace: o.Namespace}, pvc)
 	if err == nil {
 		return nil
 	} else if !errors.IsNotFound(err) {
@@ -140,11 +136,7 @@ func (r *OracleClusterReconciler) reconcilePVC(ctx context.Context, o *oraclev1.
 		return err
 	}
 	pvc.Spec = *o.Spec.VolumeSpec.PersistentVolumeClaim
-	err = r.Create(ctx, pvc)
-	if err == nil {
-		r.recorder.Eventf(o, corev1.EventTypeNormal, constants.ReasonSuccessfulCreate, "create PersistentVolumeClaim %s successful", pvc.Name)
-	}
-	return err
+	return r.eventCreated(r.Create(ctx, pvc), o, "PersistentVolumeClaim", pvc.Name)
 }
 
 func (r *OracleClusterReconciler) reconcileSVC(ctx context.Context, o *oraclev1.OracleCluster) error {
@@ -152,22 +144,25 @@ func (r *OracleClusterReconciler) reconcileSVC(ctx context.Context, o *oraclev1.
 	o.SetObject(&svc.ObjectMeta)
 	operationResult, err := ctrl.CreateOrUpdate(ctx, r.Client, svc, func() error {
 		svc.Spec.Type = corev1.ServiceTypeNodePort
-		svc.Spec.Ports = []corev1.ServicePort{
-			{Name: "listener", Port: 1521, NodePort: o.Spec.NodePort},
-			{Name: "xmldb", Port: 5500},
-			{Name: "tty", Port: 8080},
+
+		if len(svc.Spec.Ports) != 3 {
+			svc.Spec.Ports = make([]corev1.ServicePort, 3)
 		}
+		svc.Spec.Ports[0].NodePort = o.Spec.NodePort
+		svc.Spec.Ports[0].Name = "listener"
+		svc.Spec.Ports[0].Port = 1521
+
+		svc.Spec.Ports[1].Name = "xmldb"
+		svc.Spec.Ports[1].Port = 5500
+
+		svc.Spec.Ports[2].Name = "tty"
+		svc.Spec.Ports[2].Port = 8080
+
 		svc.Spec.Selector = o.ClusterLabel()
 		return ctrl.SetControllerReference(o, svc, r.Scheme)
 	})
 	r.log.Info("Reconcile SVC", "OperationResult", operationResult)
-	switch operationResult {
-	case controllerutil.OperationResultCreated:
-		r.recorder.Eventf(o, corev1.EventTypeNormal, constants.ReasonSuccessfulCreate, "create Service %s successful", svc.Name)
-	default:
-		r.recorder.Eventf(o, corev1.EventTypeNormal, constants.ReasonReconciling, "reconciling Service %s, OperationResult: %s", svc.Name, operationResult)
-	}
-	return err
+	return r.eventOperation(err, operationResult, o, "Service", svc.Name)
 }
 
 func (r *OracleClusterReconciler) reconcileDeploy(ctx context.Context, o *oraclev1.OracleCluster) error {
@@ -180,79 +175,90 @@ func (r *OracleClusterReconciler) reconcileDeploy(ctx context.Context, o *oracle
 			deploy.Spec.Strategy = *o.Spec.PodSpec.Strategy
 		}
 		deploy.Spec.Selector = &metav1.LabelSelector{MatchLabels: o.ClusterLabel()}
+		deploy.Spec.Template.Labels = o.ClusterLabel()
 
-		podSpec := corev1.PodTemplateSpec{}
-		podSpec.Labels = o.ClusterLabel()
+		podSpec := deploy.Spec.Template.Spec
 		if o.Spec.PodSpec.TerminationGracePeriodSeconds != nil {
-			podSpec.Spec.TerminationGracePeriodSeconds = o.Spec.PodSpec.TerminationGracePeriodSeconds
+			podSpec.TerminationGracePeriodSeconds = o.Spec.PodSpec.TerminationGracePeriodSeconds
 		}
 
 		securityContext := &corev1.PodSecurityContext{RunAsUser: new(int64), FSGroup: new(int64)}
 		*securityContext.RunAsUser = constants.SecurityContextRunAsUser
 		*securityContext.FSGroup = constants.SecurityContextFsGroup
-		podSpec.Spec.SecurityContext = securityContext
+		podSpec.SecurityContext = securityContext
 
+		var memory = o.MemoryValue()
 		baseEnv := []corev1.EnvVar{
 			{Name: "SVC_HOST", Value: o.Name},
 			{Name: "SVC_PORT", Value: "1521"},
 			{Name: "ORACLE_SID", Value: "CC"},
 			{Name: "ORACLE_PDB", Value: "CCPDB1"},
-			{Name: "ORACLE_PWD", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: o.UniqueName()}, Key: constants.OraclePWD}}},
+			{Name: "ORACLE_PWD", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: o.UniteName()}, Key: constants.OraclePWD}}},
 		}
-
 		var oracleEnv = make([]corev1.EnvVar, len(baseEnv))
 		copy(oracleEnv, baseEnv)
 		oracleEnv = append(oracleEnv, []corev1.EnvVar{
 			{Name: "ORACLE_CHARACTERSET", Value: "AL32UTF8"},
 			{Name: "ORACLE_EDITION", Value: "enterprise"},
 			{Name: "ENABLE_ARCHIVELOG", Value: "false"},
-			{Name: "INIT_SGA_SIZE", Value: "4096"},
-			{Name: "INIT_PGA_SIZE", Value: "1024"},
+			{Name: "INIT_SGA_SIZE", Value: o.InitSGASize(memory)},
+			{Name: "INIT_PGA_SIZE", Value: o.InitPGASize(memory)},
 		}...)
 		oracleEnv = utils.MergeEnv(oracleEnv, o.Spec.PodSpec.OracleEnv)
 		oracleCLIEnv := utils.MergeEnv(baseEnv, o.Spec.PodSpec.OracleCLIEnv)
 
-		podSpec.Spec.Containers = []corev1.Container{
-			{
-				Name:            constants.ContainerOracle,
-				Image:           o.Spec.Image,
-				ImagePullPolicy: o.Spec.PodSpec.ImagePullPolicy,
-				Ports:           []corev1.ContainerPort{{ContainerPort: 1521}, {ContainerPort: 5500}},
-				ReadinessProbe: &corev1.Probe{
-					Handler: corev1.Handler{
-						Exec: &corev1.ExecAction{
-							Command: []string{"/bin/sh", "-c", "$ORACLE_BASE/checkDBLockStatus.sh"},
-						},
-					},
-					InitialDelaySeconds: 20,
-					PeriodSeconds:       40,
-					TimeoutSeconds:      20,
-				},
-				VolumeMounts: []corev1.VolumeMount{{MountPath: "/opt/oracle/oradata", Name: constants.OracleVolumeName}},
-				Resources:    o.Spec.PodSpec.Resources,
-				Env:          oracleEnv,
-			},
-			{
-				Name:            constants.ContainerOracleCli,
-				Image:           o.Spec.CLIImage,
-				ImagePullPolicy: o.Spec.PodSpec.ImagePullPolicy,
-				Ports:           []corev1.ContainerPort{{ContainerPort: 8080}},
-				Env:             oracleCLIEnv,
+		if len(podSpec.Containers) != 2 {
+			podSpec.Containers = make([]corev1.Container, 2)
+		}
+		// container oracle
+		podSpec.Containers[0].Name = constants.ContainerOracle
+		podSpec.Containers[0].Image = o.Spec.Image
+		podSpec.Containers[0].ImagePullPolicy = o.Spec.PodSpec.ImagePullPolicy
+		if len(podSpec.Containers[0].Ports) != 2 {
+			podSpec.Containers[0].Ports = make([]corev1.ContainerPort, 2)
+		}
+		podSpec.Containers[0].Ports[0].ContainerPort = 1521
+		podSpec.Containers[0].Ports[1].ContainerPort = 5500
+		if podSpec.Containers[0].ReadinessProbe == nil {
+			podSpec.Containers[0].ReadinessProbe = &corev1.Probe{}
+		}
+		podSpec.Containers[0].ReadinessProbe.Handler = corev1.Handler{
+			Exec: &corev1.ExecAction{
+				Command: []string{"/bin/sh", "-c", "$ORACLE_BASE/checkDBLockStatus.sh"},
 			},
 		}
+		podSpec.Containers[0].ReadinessProbe.InitialDelaySeconds = 20
+		podSpec.Containers[0].ReadinessProbe.PeriodSeconds = 40
+		podSpec.Containers[0].ReadinessProbe.TimeoutSeconds = 20
+		if len(podSpec.Containers[0].VolumeMounts) != 1 {
+			podSpec.Containers[0].VolumeMounts = make([]corev1.VolumeMount, 1)
+		}
+		podSpec.Containers[0].VolumeMounts[0].MountPath = "/opt/oracle/oradata"
+		podSpec.Containers[0].VolumeMounts[0].Name = constants.OracleVolumeName
+		podSpec.Containers[0].Resources = o.Spec.PodSpec.Resources
+		podSpec.Containers[0].Env = oracleEnv
 
-		podSpec.Spec.Volumes = []corev1.Volume{{Name: constants.OracleVolumeName, VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: o.UniqueName()}}}}
-		deploy.Spec.Template = podSpec
+		// container cli
+		podSpec.Containers[1].Name = constants.ContainerOracleCli
+		podSpec.Containers[1].Image = o.Spec.CLIImage
+		podSpec.Containers[1].ImagePullPolicy = o.Spec.PodSpec.ImagePullPolicy
+		if len(podSpec.Containers[1].Ports) != 1 {
+			podSpec.Containers[1].Ports = make([]corev1.ContainerPort, 1)
+		}
+		podSpec.Containers[1].Ports[0].ContainerPort = 8080
+		podSpec.Containers[1].Env = oracleCLIEnv
+
+		if len(podSpec.Volumes) != 1 {
+			podSpec.Volumes = make([]corev1.Volume, 1)
+		}
+		podSpec.Volumes[0].Name = constants.OracleVolumeName
+		podSpec.Volumes[0].VolumeSource = corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: o.UniteName()}}
+
+		deploy.Spec.Template.Spec = podSpec
 		return ctrl.SetControllerReference(o, deploy, r.Scheme)
 	})
 	r.log.Info("Reconcile Deployment", "OperationResult", operationResult)
-	switch operationResult {
-	case controllerutil.OperationResultCreated:
-		r.recorder.Eventf(o, corev1.EventTypeNormal, constants.ReasonSuccessfulCreate, "create Deployment %s successful", deploy.Name)
-	default:
-		r.recorder.Eventf(o, corev1.EventTypeNormal, constants.ReasonReconciling, "reconciling Deployment %s, OperationResult: %s", deploy.Name, operationResult)
-	}
-	return err
+	return r.eventOperation(err, operationResult, o, "Deployment", deploy.Name)
 }
 
 func (r *OracleClusterReconciler) updateCluster(ctx context.Context, old, o *oraclev1.OracleCluster) error {
@@ -263,10 +269,35 @@ func (r *OracleClusterReconciler) updateCluster(ctx context.Context, old, o *ora
 	return r.Status().Update(ctx, o)
 }
 
+func (r *OracleClusterReconciler) eventCreated(err error, obj runtime.Object, kind, name string) error {
+	if err != nil {
+		return err
+	}
+	r.recorder.Eventf(obj, corev1.EventTypeNormal, constants.ReasonSuccessfulCreate, "create %s %s successful", kind, name)
+	return nil
+}
+
+func (r *OracleClusterReconciler) eventOperation(err error, operationResult controllerutil.OperationResult, obj runtime.Object, kind, name string) error {
+	if err != nil {
+		return err
+	}
+	switch operationResult {
+	case controllerutil.OperationResultCreated:
+		return r.eventCreated(nil, obj, kind, name)
+	case controllerutil.OperationResultNone:
+		return nil
+	default:
+		r.recorder.Eventf(obj, corev1.EventTypeNormal, constants.ReasonReconciling, "reconciling %s %s, OperationResult: %s", kind, name, operationResult)
+		return nil
+	}
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *OracleClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.recorder = mgr.GetEventRecorderFor("oraclecluster-controller")
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&oraclev1.OracleCluster{}).
+		Owns(&corev1.Service{}).
+		Owns(&appv1.Deployment{}).
 		Complete(r)
 }
