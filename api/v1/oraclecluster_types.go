@@ -30,8 +30,7 @@ import (
 
 // OracleClusterSpec defines the desired state of OracleCluster
 type OracleClusterSpec struct {
-	Image    string `json:"image,omitempty"`
-	CLIImage string `json:"cliImage,omitempty"`
+	Image string `json:"image,omitempty"`
 
 	Replicas *int32 `json:"replicas,omitempty"`
 	Password string `json:"password,omitempty"`

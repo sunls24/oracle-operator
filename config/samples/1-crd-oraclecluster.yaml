@@ -46,8 +46,6 @@ spec:
             spec:
               description: OracleClusterSpec defines the desired state of OracleCluster
               properties:
-                cliImage:
-                  type: string
                 image:
                   type: string
                 nodePort:

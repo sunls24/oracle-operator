@@ -22,6 +22,7 @@ const (
 	DefaultPullPolicy  = corev1.PullIfNotPresent
 	DefaultInitSGASize = "4096"
 	DefaultInitPGASize = "1024"
+	DefaultCLIImage    = "oracle/instantclient:19-gotty-3"
 )
 
 const (

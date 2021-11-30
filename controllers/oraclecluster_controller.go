@@ -40,7 +40,8 @@ import (
 // OracleClusterReconciler reconciles a OracleCluster object
 type OracleClusterReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	CLIImage string
 
 	log      logr.Logger
 	recorder record.EventRecorder
@@ -246,7 +247,7 @@ func (r *OracleClusterReconciler) reconcileDeploy(ctx context.Context, o *oracle
 
 		// container cli
 		podSpec.Containers[1].Name = constants.ContainerOracleCli
-		podSpec.Containers[1].Image = o.Spec.CLIImage
+		podSpec.Containers[1].Image = r.CLIImage
 		podSpec.Containers[1].ImagePullPolicy = o.Spec.PodSpec.ImagePullPolicy
 		if len(podSpec.Containers[1].Ports) != 1 {
 			podSpec.Containers[1].Ports = make([]corev1.ContainerPort, 1)
