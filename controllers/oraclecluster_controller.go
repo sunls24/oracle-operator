@@ -178,17 +178,12 @@ func (r *OracleClusterReconciler) reconcileDeploy(ctx context.Context, o *oracle
 	operationResult, err := ctrl.CreateOrUpdate(ctx, r.Client, deploy, func() error {
 		o.SetStatus(deploy)
 		deploy.Spec.Replicas = o.Spec.Replicas
-		if o.Spec.PodSpec.Strategy != nil {
-			deploy.Spec.Strategy = *o.Spec.PodSpec.Strategy
-		}
+		deploy.Spec.Strategy.Type = appv1.RecreateDeploymentStrategyType
+		deploy.Spec.Strategy.RollingUpdate = nil
 		deploy.Spec.Selector = &metav1.LabelSelector{MatchLabels: o.ClusterLabel()}
 		deploy.Spec.Template.Labels = o.ClusterLabel()
 
 		podSpec := deploy.Spec.Template.Spec
-		if o.Spec.PodSpec.TerminationGracePeriodSeconds != nil {
-			podSpec.TerminationGracePeriodSeconds = o.Spec.PodSpec.TerminationGracePeriodSeconds
-		}
-
 		securityContext := &corev1.PodSecurityContext{RunAsUser: new(int64), FSGroup: new(int64)}
 		*securityContext.RunAsUser = constants.SecurityContextRunAsUser
 		*securityContext.FSGroup = constants.SecurityContextFsGroup

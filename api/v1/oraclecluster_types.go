@@ -75,9 +75,6 @@ type PodSpec struct {
 
 	OracleEnv    []corev1.EnvVar `json:"oracleEnv,omitempty"`
 	OracleCLIEnv []corev1.EnvVar `json:"oracleCliEnv,omitempty"`
-
-	TerminationGracePeriodSeconds *int64                    `json:"terminationGracePeriodSeconds,omitempty"`
-	Strategy                      *appv1.DeploymentStrategy `json:"strategy,omitempty"`
 }
 
 type VolumeSpec struct {
