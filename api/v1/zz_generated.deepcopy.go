@@ -126,6 +126,13 @@ func (in *OracleClusterStatus) DeepCopy() *OracleClusterStatus {
 func (in *PodSpec) DeepCopyInto(out *PodSpec) {
 	*out = *in
 	in.Resources.DeepCopyInto(&out.Resources)
+	if in.NodeSelector != nil {
+		in, out := &in.NodeSelector, &out.NodeSelector
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
 	if in.OracleEnv != nil {
 		in, out := &in.OracleEnv, &out.OracleEnv
 		*out = make([]corev1.EnvVar, len(*in))

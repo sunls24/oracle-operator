@@ -59,6 +59,10 @@ spec:
                       description: PullPolicy describes a policy for if/when to pull
                         a container image
                       type: string
+                    nodeSelector:
+                      additionalProperties:
+                        type: string
+                      type: object
                     oracleCliEnv:
                       items:
                         description: EnvVar represents an environment variable present

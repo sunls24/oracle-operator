@@ -188,6 +188,9 @@ func (r *OracleClusterReconciler) reconcileDeploy(ctx context.Context, o *oracle
 		*securityContext.RunAsUser = constants.SecurityContextRunAsUser
 		*securityContext.FSGroup = constants.SecurityContextFsGroup
 		podSpec.SecurityContext = securityContext
+		if len(o.Spec.PodSpec.NodeSelector) != 0 {
+			podSpec.NodeSelector = o.Spec.PodSpec.NodeSelector
+		}
 
 		var memory = o.MemoryValue()
 		baseEnv := []corev1.EnvVar{

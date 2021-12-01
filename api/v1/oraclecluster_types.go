@@ -72,6 +72,7 @@ type OracleClusterList struct {
 type PodSpec struct {
 	ImagePullPolicy corev1.PullPolicy           `json:"imagePullPolicy,omitempty"`
 	Resources       corev1.ResourceRequirements `json:"resources,omitempty"`
+	NodeSelector    map[string]string           `json:"nodeSelector,omitempty"`
 
 	OracleEnv    []corev1.EnvVar `json:"oracleEnv,omitempty"`
 	OracleCLIEnv []corev1.EnvVar `json:"oracleCliEnv,omitempty"`
