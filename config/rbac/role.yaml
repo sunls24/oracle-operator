@@ -9,7 +9,7 @@ rules:
 - apiGroups:
   - apps
   resources:
-  - deployments
+  - statefulsets
   verbs:
   - create
   - delete
@@ -22,7 +22,6 @@ rules:
   - ""
   resources:
   - events
-  - persistentvolumeclaims
   - secrets
   - services
   verbs:
