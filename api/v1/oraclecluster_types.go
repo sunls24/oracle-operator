@@ -30,9 +30,7 @@ import (
 
 // OracleClusterSpec defines the desired state of OracleCluster
 type OracleClusterSpec struct {
-	Image string `json:"image,omitempty"`
-
-	Replicas *int32 `json:"replicas,omitempty"`
+	Image    string `json:"image,omitempty"`
 	Password string `json:"password,omitempty"`
 	NodePort int32  `json:"nodePort,omitempty"`
 
@@ -74,6 +72,7 @@ type PodSpec struct {
 	Resources       corev1.ResourceRequirements `json:"resources,omitempty"`
 	NodeSelector    map[string]string           `json:"nodeSelector,omitempty"`
 
+	OracleSID    string          `json:"oracleSid,omitempty"`
 	OracleEnv    []corev1.EnvVar `json:"oracleEnv,omitempty"`
 	OracleCLIEnv []corev1.EnvVar `json:"oracleCliEnv,omitempty"`
 }
@@ -146,9 +145,9 @@ func (in *OracleCluster) DeleteFinalizer(finalizer string) {
 	in.Finalizers = newList
 }
 
-func (in *OracleCluster) SetStatus(deploy *appv1.Deployment) {
+func (in *OracleCluster) SetStatus(statefulSet *appv1.StatefulSet) {
 	in.Status.Ready = corev1.ConditionFalse
-	if deploy.Status.ReadyReplicas == *in.Spec.Replicas {
+	if statefulSet.Status.ReadyReplicas == constants.DefaultReplicas {
 		in.Status.Ready = corev1.ConditionTrue
 	}
 }
@@ -156,6 +155,9 @@ func (in *OracleCluster) SetStatus(deploy *appv1.Deployment) {
 func (in *OracleCluster) SetDefault() {
 	if len(in.Spec.PodSpec.ImagePullPolicy) == 0 {
 		in.Spec.PodSpec.ImagePullPolicy = constants.DefaultPullPolicy
+	}
+	if len(in.Spec.PodSpec.OracleSID) == 0 {
+		in.Spec.PodSpec.OracleSID = constants.DefaultOracleSID
 	}
 }
 

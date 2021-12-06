@@ -10,6 +10,7 @@ spec:
   password: enRlc29mdA==  # must be base64
   nodePort: 32233
   podSpec:
+    oracleSID: CC
     nodeSelector:
       iwhalecloud.oraclenode: oracle
     imagePullPolicy: Always

@@ -1,7 +1,8 @@
 ### Run
 
+需指定 CLI 的镜像地址
 ```shell
-make run
+make run CLI=10.10.236.107:8099/oracle/instantclient:19-gotty-3 
 ```
 
 ### Build

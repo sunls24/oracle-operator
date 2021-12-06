@@ -19,7 +19,9 @@ package controllers
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"github.com/go-logr/logr"
+	"github.com/imdario/mergo"
 	appv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -86,17 +88,12 @@ func (r *OracleClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, err
 	}
 
-	err = r.reconcilePVC(ctx, o)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
 	err = r.reconcileSVC(ctx, o)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	err = r.reconcileDeploy(ctx, o)
+	err = r.reconcileStatefulSet(ctx, o)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -128,24 +125,6 @@ func (r *OracleClusterReconciler) reconcileSecret(ctx context.Context, o *oracle
 	return r.eventCreated(r.Create(ctx, secret), o, "Secret", secret.Name)
 }
 
-func (r *OracleClusterReconciler) reconcilePVC(ctx context.Context, o *oraclev1.OracleCluster) error {
-	r.log.Info("Reconcile PVC")
-	pvc := &corev1.PersistentVolumeClaim{}
-	err := r.Get(ctx, types.NamespacedName{Name: o.UniteName(), Namespace: o.Namespace}, pvc)
-	if err == nil {
-		return nil
-	} else if !errors.IsNotFound(err) {
-		return err
-	}
-
-	o.SetObject(&pvc.ObjectMeta)
-	if err = ctrl.SetControllerReference(o, pvc, r.Scheme); err != nil {
-		return err
-	}
-	pvc.Spec = *o.Spec.VolumeSpec.PersistentVolumeClaim
-	return r.eventCreated(r.Create(ctx, pvc), o, "PersistentVolumeClaim", pvc.Name)
-}
-
 func (r *OracleClusterReconciler) reconcileSVC(ctx context.Context, o *oraclev1.OracleCluster) error {
 	svc := &corev1.Service{}
 	o.SetObject(&svc.ObjectMeta)
@@ -172,18 +151,16 @@ func (r *OracleClusterReconciler) reconcileSVC(ctx context.Context, o *oraclev1.
 	return r.eventOperation(err, operationResult, o, "Service", svc.Name)
 }
 
-func (r *OracleClusterReconciler) reconcileDeploy(ctx context.Context, o *oraclev1.OracleCluster) error {
-	deploy := &appv1.Deployment{}
-	o.SetObject(&deploy.ObjectMeta)
-	operationResult, err := ctrl.CreateOrUpdate(ctx, r.Client, deploy, func() error {
-		o.SetStatus(deploy)
-		deploy.Spec.Replicas = o.Spec.Replicas
-		deploy.Spec.Strategy.Type = appv1.RecreateDeploymentStrategyType
-		deploy.Spec.Strategy.RollingUpdate = nil
-		deploy.Spec.Selector = &metav1.LabelSelector{MatchLabels: o.ClusterLabel()}
-		deploy.Spec.Template.Labels = o.ClusterLabel()
+func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, o *oraclev1.OracleCluster) error {
+	statefulSet := &appv1.StatefulSet{}
+	o.SetObject(&statefulSet.ObjectMeta)
+	operationResult, err := ctrl.CreateOrUpdate(ctx, r.Client, statefulSet, func() error {
+		o.SetStatus(statefulSet)
+		statefulSet.Spec.Selector = &metav1.LabelSelector{MatchLabels: o.ClusterLabel()}
+		statefulSet.Spec.Template.Labels = o.ClusterLabel()
+		statefulSet.Spec.ServiceName = o.UniteName()
 
-		podSpec := deploy.Spec.Template.Spec
+		podSpec := statefulSet.Spec.Template.Spec
 		securityContext := &corev1.PodSecurityContext{RunAsUser: new(int64), FSGroup: new(int64)}
 		*securityContext.RunAsUser = constants.SecurityContextRunAsUser
 		*securityContext.FSGroup = constants.SecurityContextFsGroup
@@ -196,8 +173,8 @@ func (r *OracleClusterReconciler) reconcileDeploy(ctx context.Context, o *oracle
 		baseEnv := []corev1.EnvVar{
 			{Name: "SVC_HOST", Value: o.Name},
 			{Name: "SVC_PORT", Value: "1521"},
-			{Name: "ORACLE_SID", Value: "CC"},
-			{Name: "ORACLE_PDB", Value: "CCPDB1"},
+			{Name: "ORACLE_SID", Value: o.Spec.PodSpec.OracleSID},
+			{Name: "ORACLE_PDB", Value: fmt.Sprintf("%sPDB", o.Spec.PodSpec.OracleSID)},
 			{Name: "ORACLE_PWD", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: o.UniteName()}, Key: constants.OraclePWD}}},
 		}
 		var oracleEnv = make([]corev1.EnvVar, len(baseEnv))
@@ -252,21 +229,24 @@ func (r *OracleClusterReconciler) reconcileDeploy(ctx context.Context, o *oracle
 		}
 		podSpec.Containers[1].Ports[0].ContainerPort = 8080
 		podSpec.Containers[1].Env = oracleCLIEnv
+		statefulSet.Spec.Template.Spec = podSpec
 
-		if len(podSpec.Volumes) != 1 {
-			podSpec.Volumes = make([]corev1.Volume, 1)
+		if len(statefulSet.Spec.VolumeClaimTemplates) != 1 {
+			statefulSet.Spec.VolumeClaimTemplates = make([]corev1.PersistentVolumeClaim, 1)
 		}
-		podSpec.Volumes[0].Name = constants.OracleVolumeName
-		podSpec.Volumes[0].VolumeSource = corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: o.UniteName()}}
-
-		deploy.Spec.Template.Spec = podSpec
-		return ctrl.SetControllerReference(o, deploy, r.Scheme)
+		statefulSet.Spec.VolumeClaimTemplates[0].Name = constants.OracleVolumeName
+		err := mergo.Merge(&statefulSet.Spec.VolumeClaimTemplates[0].Spec, o.Spec.VolumeSpec.PersistentVolumeClaim)
+		if err != nil {
+			return err
+		}
+		return ctrl.SetControllerReference(o, statefulSet, r.Scheme)
 	})
-	r.log.Info("Reconcile Deployment", "OperationResult", operationResult)
-	return r.eventOperation(err, operationResult, o, "Deployment", deploy.Name)
+	r.log.Info("Reconcile StatefulSet", "OperationResult", operationResult)
+	return r.eventOperation(err, operationResult, o, "StatefulSet", statefulSet.Name)
 }
 
 func (r *OracleClusterReconciler) updateCluster(ctx context.Context, old, o *oraclev1.OracleCluster) error {
+	// TODO：Currently only the status needs to be updated
 	if equality.Semantic.DeepEqual(old.Status, o.Status) {
 		return nil
 	}
@@ -303,6 +283,6 @@ func (r *OracleClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&oraclev1.OracleCluster{}).
 		Owns(&corev1.Service{}).
-		Owns(&appv1.Deployment{}).
+		Owns(&appv1.StatefulSet{}).
 		Complete(r)
 }
