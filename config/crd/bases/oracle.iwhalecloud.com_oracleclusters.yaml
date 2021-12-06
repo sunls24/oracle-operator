@@ -281,7 +281,7 @@ spec:
                       - name
                       type: object
                     type: array
-                  oracleSid:
+                  oracleSID:
                     type: string
                   resources:
                     description: ResourceRequirements describes the compute resource

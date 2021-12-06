@@ -72,7 +72,7 @@ type PodSpec struct {
 	Resources       corev1.ResourceRequirements `json:"resources,omitempty"`
 	NodeSelector    map[string]string           `json:"nodeSelector,omitempty"`
 
-	OracleSID    string          `json:"oracleSid,omitempty"`
+	OracleSID    string          `json:"oracleSID,omitempty"`
 	OracleEnv    []corev1.EnvVar `json:"oracleEnv,omitempty"`
 	OracleCLIEnv []corev1.EnvVar `json:"oracleCliEnv,omitempty"`
 }

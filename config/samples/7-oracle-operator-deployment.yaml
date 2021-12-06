@@ -23,7 +23,7 @@ spec:
         - name: operator
           image: 10.10.236.107:8099/k8s/oracle/oracle-operator:0.1
           args:
-            - cli-image-address=10.10.236.107:8099/oracle/instantclient:19-gotty-3
+            - cli-image=10.10.236.107:8099/oracle/instantclient:19-gotty-3
           livenessProbe:
             failureThreshold: 3
             httpGet:
