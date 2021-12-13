@@ -91,10 +91,10 @@ func (in *OracleCluster) ClusterLabel() map[string]string {
 	return map[string]string{"oracle": in.Name}
 }
 
-func (in *OracleCluster) SetObject(obj *metav1.ObjectMeta) {
-	obj.Namespace = in.Namespace
-	obj.Name = in.UniteName()
-	obj.Labels = in.ClusterLabel()
+func (in *OracleCluster) SetObject(obj metav1.Object) {
+	obj.SetNamespace(in.Namespace)
+	obj.SetName(in.UniteName())
+	obj.SetLabels(in.ClusterLabel())
 }
 
 func (in *OracleCluster) MemoryValue() int64 {

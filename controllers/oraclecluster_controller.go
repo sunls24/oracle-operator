@@ -112,7 +112,7 @@ func (r *OracleClusterReconciler) reconcileSecret(ctx context.Context, o *oracle
 		return err
 	}
 
-	o.SetObject(&secret.ObjectMeta)
+	o.SetObject(secret)
 	pwd, err := base64.StdEncoding.DecodeString(o.Spec.Password)
 	if err != nil {
 		r.log.Error(err, ".spec.password must be base64")
@@ -127,14 +127,16 @@ func (r *OracleClusterReconciler) reconcileSecret(ctx context.Context, o *oracle
 
 func (r *OracleClusterReconciler) reconcileSVC(ctx context.Context, o *oraclev1.OracleCluster) error {
 	svc := &corev1.Service{}
-	o.SetObject(&svc.ObjectMeta)
+	o.SetObject(svc)
 	operationResult, err := ctrl.CreateOrUpdate(ctx, r.Client, svc, func() error {
 		svc.Spec.Type = corev1.ServiceTypeNodePort
 
 		if len(svc.Spec.Ports) != 3 {
 			svc.Spec.Ports = make([]corev1.ServicePort, 3)
 		}
-		svc.Spec.Ports[0].NodePort = o.Spec.NodePort
+		if o.Spec.NodePort != 0 {
+			svc.Spec.Ports[0].NodePort = o.Spec.NodePort
+		}
 		svc.Spec.Ports[0].Name = "listener"
 		svc.Spec.Ports[0].Port = 1521
 
@@ -153,7 +155,7 @@ func (r *OracleClusterReconciler) reconcileSVC(ctx context.Context, o *oraclev1.
 
 func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, o *oraclev1.OracleCluster) error {
 	statefulSet := &appv1.StatefulSet{}
-	o.SetObject(&statefulSet.ObjectMeta)
+	o.SetObject(statefulSet)
 	operationResult, err := ctrl.CreateOrUpdate(ctx, r.Client, statefulSet, func() error {
 		o.SetStatus(statefulSet)
 		statefulSet.Spec.Selector = &metav1.LabelSelector{MatchLabels: o.ClusterLabel()}
@@ -235,6 +237,7 @@ func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, o *o
 
 		if len(statefulSet.Spec.VolumeClaimTemplates) != 1 {
 			statefulSet.Spec.VolumeClaimTemplates = make([]corev1.PersistentVolumeClaim, 1)
+			o.SetObject(&statefulSet.Spec.VolumeClaimTemplates[0])
 			err := ctrl.SetControllerReference(o, &statefulSet.Spec.VolumeClaimTemplates[0], r.Scheme)
 			if err != nil {
 				return err
