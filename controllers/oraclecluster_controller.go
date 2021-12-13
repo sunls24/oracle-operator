@@ -159,6 +159,8 @@ func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, o *o
 		statefulSet.Spec.Selector = &metav1.LabelSelector{MatchLabels: o.ClusterLabel()}
 		statefulSet.Spec.Template.Labels = o.ClusterLabel()
 		statefulSet.Spec.ServiceName = o.UniteName()
+		statefulSet.Spec.Replicas = new(int32)
+		*statefulSet.Spec.Replicas = constants.DefaultReplicas
 
 		podSpec := statefulSet.Spec.Template.Spec
 		securityContext := &corev1.PodSecurityContext{RunAsUser: new(int64), FSGroup: new(int64)}
@@ -233,6 +235,10 @@ func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, o *o
 
 		if len(statefulSet.Spec.VolumeClaimTemplates) != 1 {
 			statefulSet.Spec.VolumeClaimTemplates = make([]corev1.PersistentVolumeClaim, 1)
+			err := ctrl.SetControllerReference(o, &statefulSet.Spec.VolumeClaimTemplates[0], r.Scheme)
+			if err != nil {
+				return err
+			}
 		}
 		statefulSet.Spec.VolumeClaimTemplates[0].Name = constants.OracleVolumeName
 		err := mergo.Merge(&statefulSet.Spec.VolumeClaimTemplates[0].Spec, o.Spec.VolumeSpec.PersistentVolumeClaim)
