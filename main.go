@@ -19,6 +19,7 @@ package main
 import (
 	"flag"
 	"oracle-operator/utils/constants"
+	"oracle-operator/utils/options"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -53,10 +54,8 @@ func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
-	var cliImg string
-	var namespace string
-	flag.StringVar(&namespace, "namespace", "", "Namespace used for LeaderElection and Watch")
-	flag.StringVar(&cliImg, "cli-image", constants.DefaultCLIImage, "Oracle cli image address")
+	var opt = options.GetOptions()
+	opt.AddFlags()
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
@@ -77,8 +76,8 @@ func main() {
 		HealthProbeBindAddress:  probeAddr,
 		LeaderElection:          enableLeaderElection,
 		LeaderElectionID:        constants.DefaultLeaderElectionID,
-		LeaderElectionNamespace: namespace,
-		Namespace:               namespace,
+		LeaderElectionNamespace: opt.Namespace,
+		Namespace:               opt.Namespace,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
@@ -86,9 +85,8 @@ func main() {
 	}
 
 	if err = (&controllers.OracleClusterReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		CLIImage: cliImg,
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "OracleCluster")
 		os.Exit(1)

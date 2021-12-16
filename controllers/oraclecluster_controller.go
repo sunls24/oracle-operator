@@ -33,6 +33,7 @@ import (
 	oraclev1 "oracle-operator/api/v1"
 	"oracle-operator/utils"
 	"oracle-operator/utils/constants"
+	"oracle-operator/utils/options"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -42,8 +43,8 @@ import (
 // OracleClusterReconciler reconciles a OracleCluster object
 type OracleClusterReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	CLIImage string
+	Scheme *runtime.Scheme
+	opt    *options.Options
 
 	log      logr.Logger
 	recorder record.EventRecorder
@@ -102,6 +103,14 @@ func (r *OracleClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	return ctrl.Result{}, err
 }
 
+func decodePWD(in string) ([]byte, error) {
+	pwd, err := base64.StdEncoding.DecodeString(in)
+	if err != nil {
+		return nil, fmt.Errorf(".spec.password must be base64: %v", err)
+	}
+	return pwd, nil
+}
+
 func (r *OracleClusterReconciler) reconcileSecret(ctx context.Context, o *oraclev1.OracleCluster) error {
 	r.log.Info("Reconcile Secret")
 	secret := &corev1.Secret{}
@@ -113,9 +122,8 @@ func (r *OracleClusterReconciler) reconcileSecret(ctx context.Context, o *oracle
 	}
 
 	o.SetObject(secret)
-	pwd, err := base64.StdEncoding.DecodeString(o.Spec.Password)
+	pwd, err := decodePWD(o.Spec.Password)
 	if err != nil {
-		r.log.Error(err, ".spec.password must be base64")
 		return err
 	}
 	if err = ctrl.SetControllerReference(o, secret, r.Scheme); err != nil {
@@ -193,8 +201,8 @@ func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, o *o
 		oracleEnv = utils.MergeEnv(oracleEnv, o.Spec.PodSpec.OracleEnv)
 		oracleCLIEnv := utils.MergeEnv(baseEnv, o.Spec.PodSpec.OracleCLIEnv)
 
-		if len(podSpec.Containers) != 2 {
-			podSpec.Containers = make([]corev1.Container, 2)
+		if len(podSpec.Containers) != 3 {
+			podSpec.Containers = make([]corev1.Container, 3)
 		}
 		// container oracle
 		podSpec.Containers[0].Name = constants.ContainerOracle
@@ -226,25 +234,42 @@ func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, o *o
 
 		// container cli
 		podSpec.Containers[1].Name = constants.ContainerOracleCli
-		podSpec.Containers[1].Image = r.CLIImage
+		podSpec.Containers[1].Image = r.opt.CLIImage
 		podSpec.Containers[1].ImagePullPolicy = o.Spec.PodSpec.ImagePullPolicy
 		if len(podSpec.Containers[1].Ports) != 1 {
 			podSpec.Containers[1].Ports = make([]corev1.ContainerPort, 1)
 		}
 		podSpec.Containers[1].Ports[0].ContainerPort = 8080
 		podSpec.Containers[1].Env = oracleCLIEnv
+
+		// container exporter
+		podSpec.Containers[2].Name = constants.ContainerExporter
+		podSpec.Containers[2].Image = r.opt.ExporterImage
+		podSpec.Containers[2].ImagePullPolicy = o.Spec.PodSpec.ImagePullPolicy
+		if len(podSpec.Containers[2].Ports) != 1 {
+			podSpec.Containers[2].Ports = make([]corev1.ContainerPort, 1)
+		}
+		podSpec.Containers[2].Ports[0].ContainerPort = 9161
+
+		pwd, err := decodePWD(o.Spec.Password)
+		if err != nil {
+			return err
+		}
+		//user/password@myhost:1521/service
+		source := fmt.Sprintf("%s/%s@localhost:1521/%s", constants.DefaultExporterUser, pwd, o.Spec.PodSpec.OracleSID)
+		podSpec.Containers[2].Env = []corev1.EnvVar{{Name: "DATA_SOURCE_NAME", Value: source}}
 		statefulSet.Spec.Template.Spec = podSpec
 
 		if len(statefulSet.Spec.VolumeClaimTemplates) != 1 {
 			statefulSet.Spec.VolumeClaimTemplates = make([]corev1.PersistentVolumeClaim, 1)
 			o.SetObject(&statefulSet.Spec.VolumeClaimTemplates[0])
-			err := ctrl.SetControllerReference(o, &statefulSet.Spec.VolumeClaimTemplates[0], r.Scheme)
+			err = ctrl.SetControllerReference(o, &statefulSet.Spec.VolumeClaimTemplates[0], r.Scheme)
 			if err != nil {
 				return err
 			}
 		}
 		statefulSet.Spec.VolumeClaimTemplates[0].Name = constants.OracleVolumeName
-		err := mergo.Merge(&statefulSet.Spec.VolumeClaimTemplates[0].Spec, o.Spec.VolumeSpec.PersistentVolumeClaim)
+		err = mergo.Merge(&statefulSet.Spec.VolumeClaimTemplates[0].Spec, o.Spec.VolumeSpec.PersistentVolumeClaim)
 		if err != nil {
 			return err
 		}
@@ -289,6 +314,7 @@ func (r *OracleClusterReconciler) eventOperation(err error, operationResult cont
 // SetupWithManager sets up the controller with the Manager.
 func (r *OracleClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.recorder = mgr.GetEventRecorderFor("oraclecluster-controller")
+	r.opt = options.GetOptions()
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&oraclev1.OracleCluster{}).
 		Owns(&corev1.Service{}).
