@@ -22,7 +22,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"oracle-operator/utils/constants"
-	"strconv"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -107,22 +106,6 @@ func (in *OracleCluster) MemoryValue() int64 {
 		mem /= 1048576 // 1024 * 1024
 	}
 	return mem
-}
-
-func (in *OracleCluster) InitSGASize(memory int64) string {
-	if memory == 0 {
-		return constants.DefaultInitSGASize
-	}
-	// 内存*80%*80%
-	return strconv.Itoa(int(float64(memory) * 0.64))
-}
-
-func (in *OracleCluster) InitPGASize(memory int64) string {
-	if memory == 0 {
-		return constants.DefaultInitPGASize
-	}
-	// 内存*80%*20%
-	return strconv.Itoa(int(float64(memory) * 0.16))
 }
 
 func (in *OracleCluster) AddFinalizer(finalizer string) {

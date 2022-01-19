@@ -5,6 +5,10 @@ import corev1 "k8s.io/api/core/v1"
 const (
 	OraclePWD        = "ORACLE_PASSWORD"
 	OracleVolumeName = "data"
+
+	InitPGASize      = "INIT_PGA_SIZE"
+	InitPGALimitSize = "INIT_PGA_LIMIT_SIZE"
+	InitSGASize      = "INIT_SGA_SIZE"
 )
 
 const (
@@ -20,8 +24,6 @@ const (
 
 const (
 	DefaultPullPolicy         = corev1.PullIfNotPresent
-	DefaultInitSGASize        = "4096"
-	DefaultInitPGASize        = "1024"
 	DefaultReplicas     int32 = 1
 	DefaultOracleSID          = "CC"
 	DefaultExporterUser       = "system"

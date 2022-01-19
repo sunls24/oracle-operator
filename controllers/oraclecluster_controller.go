@@ -181,7 +181,9 @@ func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, o *o
 			podSpec.NodeSelector = o.Spec.PodSpec.NodeSelector
 		}
 
-		var memory = o.MemoryValue()
+		if len(podSpec.Containers) != 2 {
+			podSpec.Containers = make([]corev1.Container, 2)
+		}
 		baseEnv := []corev1.EnvVar{
 			{Name: "SVC_HOST", Value: o.Name},
 			{Name: "SVC_PORT", Value: "1521"},
@@ -189,21 +191,35 @@ func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, o *o
 			{Name: "ORACLE_PDB", Value: fmt.Sprintf("%sPDB", o.Spec.PodSpec.OracleSID)},
 			{Name: "ORACLE_PWD", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: o.UniteName()}, Key: constants.OraclePWD}}},
 		}
+		// PGA和SGA的大小配置只在首次配置，后续规格变更大小不会变化
+		var initPGA, initPGALimit, initSGA string
+		if len(podSpec.Containers[0].Env) == 0 {
+			initPGA, initPGALimit, initSGA = utils.InitMemorySize(float64(o.MemoryValue()))
+		} else {
+			for _, env := range podSpec.Containers[0].Env {
+				switch env.Name {
+				case constants.InitPGASize:
+					initPGA = env.Value
+				case constants.InitPGALimitSize:
+					initPGALimit = env.Value
+				case constants.InitSGASize:
+					initSGA = env.Value
+				}
+			}
+		}
 		var oracleEnv = make([]corev1.EnvVar, len(baseEnv))
 		copy(oracleEnv, baseEnv)
 		oracleEnv = append(oracleEnv, []corev1.EnvVar{
 			{Name: "ORACLE_CHARACTERSET", Value: "AL32UTF8"},
 			{Name: "ORACLE_EDITION", Value: "enterprise"},
 			{Name: "ENABLE_ARCHIVELOG", Value: "false"},
-			{Name: "INIT_SGA_SIZE", Value: o.InitSGASize(memory)},
-			{Name: "INIT_PGA_SIZE", Value: o.InitPGASize(memory)},
+			{Name: constants.InitPGASize, Value: initPGA},
+			{Name: constants.InitPGALimitSize, Value: initPGALimit},
+			{Name: constants.InitSGASize, Value: initSGA},
 		}...)
 		oracleEnv = utils.MergeEnv(oracleEnv, o.Spec.PodSpec.OracleEnv)
 		oracleCLIEnv := utils.MergeEnv(baseEnv, o.Spec.PodSpec.OracleCLIEnv)
 
-		if len(podSpec.Containers) != 3 {
-			podSpec.Containers = make([]corev1.Container, 3)
-		}
 		// container oracle
 		podSpec.Containers[0].Name = constants.ContainerOracle
 		podSpec.Containers[0].Image = o.Spec.Image
