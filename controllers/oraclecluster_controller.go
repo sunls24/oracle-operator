@@ -38,6 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"strings"
 )
 
 // OracleClusterReconciler reconciles a OracleCluster object
@@ -168,6 +169,7 @@ func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, o *o
 		o.SetStatus(statefulSet)
 		statefulSet.Spec.Selector = &metav1.LabelSelector{MatchLabels: o.ClusterLabel()}
 		statefulSet.Spec.Template.Labels = o.ClusterLabel()
+		statefulSet.Spec.Template.Annotations = constants.ExportAnnotations
 		statefulSet.Spec.ServiceName = o.UniteName()
 		statefulSet.Spec.Replicas = new(int32)
 		*statefulSet.Spec.Replicas = constants.DefaultReplicas
@@ -181,8 +183,8 @@ func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, o *o
 			podSpec.NodeSelector = o.Spec.PodSpec.NodeSelector
 		}
 
-		if len(podSpec.Containers) != 2 {
-			podSpec.Containers = make([]corev1.Container, 2)
+		if len(podSpec.Containers) != 3 {
+			podSpec.Containers = make([]corev1.Container, 3)
 		}
 		baseEnv := []corev1.EnvVar{
 			{Name: "SVC_HOST", Value: o.Name},
@@ -265,14 +267,14 @@ func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, o *o
 		if len(podSpec.Containers[2].Ports) != 1 {
 			podSpec.Containers[2].Ports = make([]corev1.ContainerPort, 1)
 		}
-		podSpec.Containers[2].Ports[0].ContainerPort = 9161
+		podSpec.Containers[2].Ports[0].ContainerPort = constants.DefaultExportPort
 
 		pwd, err := decodePWD(o.Spec.Password)
 		if err != nil {
 			return err
 		}
-		//user/password@myhost:1521/service
-		source := fmt.Sprintf("%s/%s@localhost:1521/%s", constants.DefaultExporterUser, pwd, o.Spec.PodSpec.OracleSID)
+		// user/password@myhost:1521/service
+		source := fmt.Sprintf("%s/%s@127.0.0.1:1521/%s", constants.DefaultExporterUser, pwd, strings.ToUpper(o.Spec.PodSpec.OracleSID))
 		podSpec.Containers[2].Env = []corev1.EnvVar{{Name: "DATA_SOURCE_NAME", Value: source}}
 		statefulSet.Spec.Template.Spec = podSpec
 

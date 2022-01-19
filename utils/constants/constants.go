@@ -1,6 +1,9 @@
 package constants
 
-import corev1 "k8s.io/api/core/v1"
+import (
+	corev1 "k8s.io/api/core/v1"
+	"strconv"
+)
 
 const (
 	OraclePWD        = "ORACLE_PASSWORD"
@@ -27,6 +30,7 @@ const (
 	DefaultReplicas     int32 = 1
 	DefaultOracleSID          = "CC"
 	DefaultExporterUser       = "system"
+	DefaultExportPort   int32 = 9161
 
 	DefaultCLIImage         = "oracle/instantclient:19-gotty-3"
 	DefaultExporterImage    = "iamseth/oracledb_exporter"
@@ -37,3 +41,5 @@ const (
 	ReasonSuccessfulCreate = "SuccessfulCreate"
 	ReasonReconciling      = "Reconciling"
 )
+
+var ExportAnnotations = map[string]string{"prometheus.io/port": strconv.Itoa(int(DefaultExportPort)), "prometheus.io/scrape": "true"}
