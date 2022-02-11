@@ -12,6 +12,7 @@ const (
 	InitPGASize      = "INIT_PGA_SIZE"
 	InitPGALimitSize = "INIT_PGA_LIMIT_SIZE"
 	InitSGASize      = "INIT_SGA_SIZE"
+	EnableArchiveLog = "ENABLE_ARCHIVELOG"
 )
 
 const (

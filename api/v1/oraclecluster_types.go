@@ -29,9 +29,10 @@ import (
 
 // OracleClusterSpec defines the desired state of OracleCluster
 type OracleClusterSpec struct {
-	Image    string `json:"image,omitempty"`
-	Password string `json:"password,omitempty"`
-	NodePort int32  `json:"nodePort,omitempty"`
+	Image       string `json:"image,omitempty"`
+	Password    string `json:"password,omitempty"`
+	NodePort    int32  `json:"nodePort,omitempty"`
+	ArchiveMode bool   `json:"archiveMode,omitempty"`
 
 	PodSpec    PodSpec    `json:"podSpec,omitempty"`
 	VolumeSpec VolumeSpec `json:"volumeSpec,omitempty"`

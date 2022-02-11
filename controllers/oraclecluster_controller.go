@@ -38,6 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"strconv"
 	"strings"
 )
 
@@ -195,8 +196,10 @@ func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, o *o
 		}
 		// PGA和SGA的大小配置只在首次配置，后续规格变更大小不会变化
 		var initPGA, initPGALimit, initSGA string
+		var archiveMode string
 		if len(podSpec.Containers[0].Env) == 0 {
 			initPGA, initPGALimit, initSGA = utils.InitMemorySize(float64(o.MemoryValue()))
+			archiveMode = strconv.FormatBool(o.Spec.ArchiveMode)
 		} else {
 			for _, env := range podSpec.Containers[0].Env {
 				switch env.Name {
@@ -206,6 +209,8 @@ func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, o *o
 					initPGALimit = env.Value
 				case constants.InitSGASize:
 					initSGA = env.Value
+				case constants.EnableArchiveLog:
+					archiveMode = env.Value
 				}
 			}
 		}
@@ -214,7 +219,7 @@ func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, o *o
 		oracleEnv = append(oracleEnv, []corev1.EnvVar{
 			{Name: "ORACLE_CHARACTERSET", Value: "AL32UTF8"},
 			{Name: "ORACLE_EDITION", Value: "enterprise"},
-			{Name: "ENABLE_ARCHIVELOG", Value: "false"},
+			{Name: constants.EnableArchiveLog, Value: archiveMode},
 			{Name: constants.InitPGASize, Value: initPGA},
 			{Name: constants.InitPGALimitSize, Value: initPGALimit},
 			{Name: constants.InitSGASize, Value: initSGA},
@@ -236,12 +241,12 @@ func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, o *o
 		}
 		podSpec.Containers[0].ReadinessProbe.Handler = corev1.Handler{
 			Exec: &corev1.ExecAction{
-				Command: []string{"/bin/sh", "-c", "$ORACLE_BASE/checkDBLockStatus.sh"},
+				Command: []string{"/bin/sh", "-c", "$ORACLE_BASE/$CHECK_DB_FILE"},
 			},
 		}
-		podSpec.Containers[0].ReadinessProbe.InitialDelaySeconds = 20
-		podSpec.Containers[0].ReadinessProbe.PeriodSeconds = 40
-		podSpec.Containers[0].ReadinessProbe.TimeoutSeconds = 20
+		podSpec.Containers[0].ReadinessProbe.InitialDelaySeconds = 60
+		podSpec.Containers[0].ReadinessProbe.PeriodSeconds = 60
+		podSpec.Containers[0].ReadinessProbe.TimeoutSeconds = 60
 		if len(podSpec.Containers[0].VolumeMounts) != 1 {
 			podSpec.Containers[0].VolumeMounts = make([]corev1.VolumeMount, 1)
 		}

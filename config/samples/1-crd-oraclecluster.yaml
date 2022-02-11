@@ -46,6 +46,8 @@ spec:
             spec:
               description: OracleClusterSpec defines the desired state of OracleCluster
               properties:
+                archiveMode:
+                  type: boolean
                 image:
                   type: string
                 nodePort:
