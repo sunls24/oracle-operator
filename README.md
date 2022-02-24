@@ -3,7 +3,7 @@
 需指定 CLI 的镜像地址，指定 NS 命名空间可选
 
 ```shell
-make run CLI=10.10.236.107:8099/oracle/instantclient:19-gotty-3 NS=default
+make run CLI=10.10.236.107:8099/oracle/instantclient:19-gotty-3 NS=default EXPORTER=10.10.236.107:8099/k8s/oracle/oracledb_exporter:custom
 ```
 
 ### Build

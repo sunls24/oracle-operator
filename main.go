@@ -18,9 +18,10 @@ package main
 
 import (
 	"flag"
+	"os"
+
 	"oracle-operator/utils/constants"
 	"oracle-operator/utils/options"
-	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -89,6 +90,14 @@ func main() {
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "OracleCluster")
+		os.Exit(1)
+	}
+	if err = (&controllers.OracleBackupReconciler{
+		Config: mgr.GetConfig(),
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "OracleBackup")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder

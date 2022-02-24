@@ -69,8 +69,8 @@ type OracleClusterReconciler struct {
 func (r *OracleClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	r.log = log.FromContext(ctx)
 
-	o := &oraclev1.OracleCluster{}
-	err := r.Get(ctx, req.NamespacedName, o)
+	oc := &oraclev1.OracleCluster{}
+	err := r.Get(ctx, req.NamespacedName, oc)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return ctrl.Result{}, nil
@@ -78,30 +78,30 @@ func (r *OracleClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, err
 	}
 
-	if o.DeletionTimestamp != nil {
+	if oc.DeletionTimestamp != nil {
 		return ctrl.Result{}, nil
 	}
 
 	r.log.Info("Start Reconcile")
-	old := o.DeepCopy()
-	o.SetDefault()
+	old := oc.DeepCopy()
+	oc.SetDefault()
 
-	err = r.reconcileSecret(ctx, o)
+	err = r.reconcileSecret(ctx, oc)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	err = r.reconcileSVC(ctx, o)
+	err = r.reconcileSVC(ctx, oc)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	err = r.reconcileStatefulSet(ctx, o)
+	err = r.reconcileStatefulSet(ctx, oc)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	err = r.updateCluster(ctx, old, o)
+	err = r.updateCluster(ctx, old, oc)
 	return ctrl.Result{}, err
 }
 
@@ -113,39 +113,39 @@ func decodePWD(in string) ([]byte, error) {
 	return pwd, nil
 }
 
-func (r *OracleClusterReconciler) reconcileSecret(ctx context.Context, o *oraclev1.OracleCluster) error {
+func (r *OracleClusterReconciler) reconcileSecret(ctx context.Context, oc *oraclev1.OracleCluster) error {
 	r.log.Info("Reconcile Secret")
 	secret := &corev1.Secret{}
-	err := r.Get(ctx, types.NamespacedName{Name: o.UniteName(), Namespace: o.Namespace}, secret)
+	err := r.Get(ctx, types.NamespacedName{Name: oc.UniteName(), Namespace: oc.Namespace}, secret)
 	if err == nil {
 		return nil
 	} else if !errors.IsNotFound(err) {
 		return err
 	}
 
-	o.SetObject(secret)
-	pwd, err := decodePWD(o.Spec.Password)
+	oc.SetObject(secret)
+	pwd, err := decodePWD(oc.Spec.Password)
 	if err != nil {
 		return err
 	}
-	if err = ctrl.SetControllerReference(o, secret, r.Scheme); err != nil {
+	if err = ctrl.SetControllerReference(oc, secret, r.Scheme); err != nil {
 		return err
 	}
 	secret.Data = map[string][]byte{constants.OraclePWD: pwd}
-	return r.eventCreated(r.Create(ctx, secret), o, "Secret", secret.Name)
+	return r.eventCreated(r.Create(ctx, secret), oc, "Secret", secret.Name)
 }
 
-func (r *OracleClusterReconciler) reconcileSVC(ctx context.Context, o *oraclev1.OracleCluster) error {
+func (r *OracleClusterReconciler) reconcileSVC(ctx context.Context, oc *oraclev1.OracleCluster) error {
 	svc := &corev1.Service{}
-	o.SetObject(svc)
+	oc.SetObject(svc)
 	operationResult, err := ctrl.CreateOrUpdate(ctx, r.Client, svc, func() error {
 		svc.Spec.Type = corev1.ServiceTypeNodePort
 
 		if len(svc.Spec.Ports) != 3 {
 			svc.Spec.Ports = make([]corev1.ServicePort, 3)
 		}
-		if o.Spec.NodePort != 0 {
-			svc.Spec.Ports[0].NodePort = o.Spec.NodePort
+		if oc.Spec.NodePort != 0 {
+			svc.Spec.Ports[0].NodePort = oc.Spec.NodePort
 		}
 		svc.Spec.Ports[0].Name = "listener"
 		svc.Spec.Ports[0].Port = 1521
@@ -156,22 +156,22 @@ func (r *OracleClusterReconciler) reconcileSVC(ctx context.Context, o *oraclev1.
 		svc.Spec.Ports[2].Name = "tty"
 		svc.Spec.Ports[2].Port = 8080
 
-		svc.Spec.Selector = o.ClusterLabel()
-		return ctrl.SetControllerReference(o, svc, r.Scheme)
+		svc.Spec.Selector = oc.ClusterLabel()
+		return ctrl.SetControllerReference(oc, svc, r.Scheme)
 	})
 	r.log.Info("Reconcile SVC", "OperationResult", operationResult)
-	return r.eventOperation(err, operationResult, o, "Service", svc.Name)
+	return r.eventOperation(err, operationResult, oc, "Service", svc.Name)
 }
 
-func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, o *oraclev1.OracleCluster) error {
+func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, oc *oraclev1.OracleCluster) error {
 	statefulSet := &appv1.StatefulSet{}
-	o.SetObject(statefulSet)
+	oc.SetObject(statefulSet)
 	operationResult, err := ctrl.CreateOrUpdate(ctx, r.Client, statefulSet, func() error {
-		o.SetStatus(statefulSet)
-		statefulSet.Spec.Selector = &metav1.LabelSelector{MatchLabels: o.ClusterLabel()}
-		statefulSet.Spec.Template.Labels = o.ClusterLabel()
+		oc.SetStatus(statefulSet)
+		statefulSet.Spec.Selector = &metav1.LabelSelector{MatchLabels: oc.ClusterLabel()}
+		statefulSet.Spec.Template.Labels = oc.ClusterLabel()
 		statefulSet.Spec.Template.Annotations = constants.ExportAnnotations
-		statefulSet.Spec.ServiceName = o.UniteName()
+		statefulSet.Spec.ServiceName = oc.UniteName()
 		statefulSet.Spec.Replicas = new(int32)
 		*statefulSet.Spec.Replicas = constants.DefaultReplicas
 
@@ -180,26 +180,26 @@ func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, o *o
 		*securityContext.RunAsUser = constants.SecurityContextRunAsUser
 		*securityContext.FSGroup = constants.SecurityContextFsGroup
 		podSpec.SecurityContext = securityContext
-		if len(o.Spec.PodSpec.NodeSelector) != 0 {
-			podSpec.NodeSelector = o.Spec.PodSpec.NodeSelector
+		if len(oc.Spec.PodSpec.NodeSelector) != 0 {
+			podSpec.NodeSelector = oc.Spec.PodSpec.NodeSelector
 		}
 
 		if len(podSpec.Containers) != 3 {
 			podSpec.Containers = make([]corev1.Container, 3)
 		}
 		baseEnv := []corev1.EnvVar{
-			{Name: "SVC_HOST", Value: o.Name},
+			{Name: "SVC_HOST", Value: oc.Name},
 			{Name: "SVC_PORT", Value: "1521"},
-			{Name: "ORACLE_SID", Value: o.Spec.PodSpec.OracleSID},
-			{Name: "ORACLE_PDB", Value: fmt.Sprintf("%sPDB", o.Spec.PodSpec.OracleSID)},
-			{Name: "ORACLE_PWD", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: o.UniteName()}, Key: constants.OraclePWD}}},
+			{Name: "ORACLE_SID", Value: oc.Spec.PodSpec.OracleSID},
+			{Name: "ORACLE_PDB", Value: fmt.Sprintf("%sPDB", oc.Spec.PodSpec.OracleSID)},
+			{Name: "ORACLE_PWD", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: oc.UniteName()}, Key: constants.OraclePWD}}},
 		}
 		// PGA和SGA的大小配置只在首次配置，后续规格变更大小不会变化
 		var initPGA, initPGALimit, initSGA string
 		var archiveMode string
 		if len(podSpec.Containers[0].Env) == 0 {
-			initPGA, initPGALimit, initSGA = utils.InitMemorySize(float64(o.MemoryValue()))
-			archiveMode = strconv.FormatBool(o.Spec.ArchiveMode)
+			initPGA, initPGALimit, initSGA = utils.InitMemorySize(float64(oc.MemoryValue()))
+			archiveMode = strconv.FormatBool(oc.Spec.ArchiveMode)
 		} else {
 			for _, env := range podSpec.Containers[0].Env {
 				switch env.Name {
@@ -224,13 +224,13 @@ func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, o *o
 			{Name: constants.InitPGALimitSize, Value: initPGALimit},
 			{Name: constants.InitSGASize, Value: initSGA},
 		}...)
-		oracleEnv = utils.MergeEnv(oracleEnv, o.Spec.PodSpec.OracleEnv)
-		oracleCLIEnv := utils.MergeEnv(baseEnv, o.Spec.PodSpec.OracleCLIEnv)
+		oracleEnv = utils.MergeEnv(oracleEnv, oc.Spec.PodSpec.OracleEnv)
+		oracleCLIEnv := utils.MergeEnv(baseEnv, oc.Spec.PodSpec.OracleCLIEnv)
 
 		// container oracle
 		podSpec.Containers[0].Name = constants.ContainerOracle
-		podSpec.Containers[0].Image = o.Spec.Image
-		podSpec.Containers[0].ImagePullPolicy = o.Spec.PodSpec.ImagePullPolicy
+		podSpec.Containers[0].Image = oc.Spec.Image
+		podSpec.Containers[0].ImagePullPolicy = oc.Spec.PodSpec.ImagePullPolicy
 		if len(podSpec.Containers[0].Ports) != 2 {
 			podSpec.Containers[0].Ports = make([]corev1.ContainerPort, 2)
 		}
@@ -252,13 +252,13 @@ func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, o *o
 		}
 		podSpec.Containers[0].VolumeMounts[0].MountPath = "/opt/oracle/oradata"
 		podSpec.Containers[0].VolumeMounts[0].Name = constants.OracleVolumeName
-		podSpec.Containers[0].Resources = o.Spec.PodSpec.Resources
+		podSpec.Containers[0].Resources = oc.Spec.PodSpec.Resources
 		podSpec.Containers[0].Env = oracleEnv
 
 		// container cli
 		podSpec.Containers[1].Name = constants.ContainerOracleCli
 		podSpec.Containers[1].Image = r.opt.CLIImage
-		podSpec.Containers[1].ImagePullPolicy = o.Spec.PodSpec.ImagePullPolicy
+		podSpec.Containers[1].ImagePullPolicy = oc.Spec.PodSpec.ImagePullPolicy
 		if len(podSpec.Containers[1].Ports) != 1 {
 			podSpec.Containers[1].Ports = make([]corev1.ContainerPort, 1)
 		}
@@ -268,47 +268,47 @@ func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, o *o
 		// container exporter
 		podSpec.Containers[2].Name = constants.ContainerExporter
 		podSpec.Containers[2].Image = r.opt.ExporterImage
-		podSpec.Containers[2].ImagePullPolicy = o.Spec.PodSpec.ImagePullPolicy
+		podSpec.Containers[2].ImagePullPolicy = oc.Spec.PodSpec.ImagePullPolicy
 		if len(podSpec.Containers[2].Ports) != 1 {
 			podSpec.Containers[2].Ports = make([]corev1.ContainerPort, 1)
 		}
 		podSpec.Containers[2].Ports[0].ContainerPort = constants.DefaultExportPort
 
-		pwd, err := decodePWD(o.Spec.Password)
+		pwd, err := decodePWD(oc.Spec.Password)
 		if err != nil {
 			return err
 		}
 		// user/password@myhost:1521/service
-		source := fmt.Sprintf("%s/%s@127.0.0.1:1521/%s", constants.DefaultExporterUser, pwd, strings.ToUpper(o.Spec.PodSpec.OracleSID))
+		source := fmt.Sprintf("%s/%s@127.0.0.1:1521/%s", constants.DefaultExporterUser, pwd, strings.ToUpper(oc.Spec.PodSpec.OracleSID))
 		podSpec.Containers[2].Env = []corev1.EnvVar{{Name: "DATA_SOURCE_NAME", Value: source}}
 		statefulSet.Spec.Template.Spec = podSpec
 
 		if len(statefulSet.Spec.VolumeClaimTemplates) != 1 {
 			statefulSet.Spec.VolumeClaimTemplates = make([]corev1.PersistentVolumeClaim, 1)
-			o.SetObject(&statefulSet.Spec.VolumeClaimTemplates[0])
-			err = ctrl.SetControllerReference(o, &statefulSet.Spec.VolumeClaimTemplates[0], r.Scheme)
+			oc.SetObject(&statefulSet.Spec.VolumeClaimTemplates[0])
+			err = ctrl.SetControllerReference(oc, &statefulSet.Spec.VolumeClaimTemplates[0], r.Scheme)
 			if err != nil {
 				return err
 			}
 		}
 		statefulSet.Spec.VolumeClaimTemplates[0].Name = constants.OracleVolumeName
-		err = mergo.Merge(&statefulSet.Spec.VolumeClaimTemplates[0].Spec, o.Spec.VolumeSpec.PersistentVolumeClaim)
+		err = mergo.Merge(&statefulSet.Spec.VolumeClaimTemplates[0].Spec, oc.Spec.VolumeSpec.PersistentVolumeClaim)
 		if err != nil {
 			return err
 		}
-		return ctrl.SetControllerReference(o, statefulSet, r.Scheme)
+		return ctrl.SetControllerReference(oc, statefulSet, r.Scheme)
 	})
 	r.log.Info("Reconcile StatefulSet", "OperationResult", operationResult)
-	return r.eventOperation(err, operationResult, o, "StatefulSet", statefulSet.Name)
+	return r.eventOperation(err, operationResult, oc, "StatefulSet", statefulSet.Name)
 }
 
-func (r *OracleClusterReconciler) updateCluster(ctx context.Context, old, o *oraclev1.OracleCluster) error {
+func (r *OracleClusterReconciler) updateCluster(ctx context.Context, old, oc *oraclev1.OracleCluster) error {
 	// TODO：Currently only the status needs to be updated
-	if equality.Semantic.DeepEqual(old.Status, o.Status) {
+	if equality.Semantic.DeepEqual(old.Status, oc.Status) {
 		return nil
 	}
-	r.log.Info("update status", "old", old.Status, "new", o.Status)
-	return r.Status().Update(ctx, o)
+	r.log.Info("update status", "old", old.Status, "new", oc.Status)
+	return r.Status().Update(ctx, oc)
 }
 
 func (r *OracleClusterReconciler) eventCreated(err error, obj runtime.Object, kind, name string) error {

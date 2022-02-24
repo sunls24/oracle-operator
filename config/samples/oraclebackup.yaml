@@ -1,0 +1,6 @@
+apiVersion: oracle.iwhalecloud.com/v1
+kind: OracleBackup
+metadata:
+  name: oraclebackup
+spec:
+  clusterName: archive-oracle-1

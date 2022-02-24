@@ -35,6 +35,32 @@ rules:
 - apiGroups:
   - oracle.iwhalecloud.com
   resources:
+  - oraclebackups
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - oracle.iwhalecloud.com
+  resources:
+  - oraclebackups/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - oracle.iwhalecloud.com
+  resources:
+  - oraclebackups/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - oracle.iwhalecloud.com
+  resources:
   - oracleclusters
   verbs:
   - create

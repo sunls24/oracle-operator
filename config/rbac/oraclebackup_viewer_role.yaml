@@ -1,0 +1,20 @@
+# permissions for end users to view oraclebackups.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: oraclebackup-viewer-role
+rules:
+- apiGroups:
+  - oracle.iwhalecloud.com
+  resources:
+  - oraclebackups
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - oracle.iwhalecloud.com
+  resources:
+  - oraclebackups/status
+  verbs:
+  - get

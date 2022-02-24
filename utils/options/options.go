@@ -9,6 +9,8 @@ type Options struct {
 	CLIImage      string
 	ExporterImage string
 	Namespace     string
+
+	OSBWInstallCmd []string
 }
 
 func (o *Options) AddFlags() {

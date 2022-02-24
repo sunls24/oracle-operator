@@ -2,6 +2,12 @@ package utils
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/remotecommand"
+	"os"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"strconv"
 )
 
@@ -54,4 +60,24 @@ func InitMemorySize(memory float64) (pgaTarget, pgaLimit, sga string) {
 		pgaTarget = strconv.Itoa(int(pgaLimitValue * 0.5))
 	}
 	return
+}
+
+func ExecCommand(client kubernetes.Interface, config *rest.Config, namespace, podName, container string, command []string) error {
+	req := client.CoreV1().RESTClient().Post().Resource("pods").
+		Name(podName).Namespace(namespace).SubResource("exec").
+		VersionedParams(&corev1.PodExecOptions{
+			Container: container,
+			Command:   command,
+			Stdin:     false,
+			Stderr:    true,
+			Stdout:    true}, scheme.ParameterCodec)
+	exec, err := remotecommand.NewSPDYExecutor(config, "POST", req.URL())
+	if err != nil {
+		return err
+	}
+
+	log.FromContext(nil).Info("start exec command", "podName", podName, "container", container, "command", command)
+	err = exec.Stream(remotecommand.StreamOptions{Stdout: os.Stdout, Stderr: os.Stderr})
+	log.FromContext(nil).Info("exec command end")
+	return err
 }
