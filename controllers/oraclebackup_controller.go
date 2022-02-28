@@ -20,19 +20,21 @@ import (
 	"context"
 	"fmt"
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	"oracle-operator/utils"
 	"oracle-operator/utils/constants"
 	"oracle-operator/utils/options"
-
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"strings"
 
 	oraclev1 "oracle-operator/api/v1"
 )
@@ -81,8 +83,8 @@ func (r *OracleBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	if ob.Status.Completed {
-		// 已经备份完成
+	if len(ob.Status.BackupStatus) != 0 {
+		// 已经备份完成或者正在备份
 		return ctrl.Result{}, nil
 	}
 
@@ -93,12 +95,54 @@ func (r *OracleBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, fmt.Errorf("get oracle pod error: %v, oracle pod: %v", err, oraclePod)
 	}
 
-	err = utils.ExecCommand(r.clientSet, r.Config, req.Namespace, oraclePod.Items[0].Name, constants.ContainerOracle, []string{"echo", "TEST TEST !!! EXEC COMMAND!"})
+	osbwsInstallCmd, err := r.osbwsInstallCmd(ctx, ob)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("get osbwsInstallCmd error: %v", err)
+	}
+
+	err = utils.ExecCommand(r.clientSet, r.Config, req.Namespace, oraclePod.Items[0].Name, constants.ContainerOracle,
+		[]string{"sh", "-c", osbwsInstallCmd})
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("exec command error: %v", err)
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *OracleBackupReconciler) osbwsInstallCmd(ctx context.Context, ob *oraclev1.OracleBackup) (string, error) {
+	var command string
+	oc := &oraclev1.OracleCluster{}
+	err := r.Client.Get(ctx, types.NamespacedName{Namespace: ob.Namespace, Name: ob.Spec.ClusterName}, oc)
+	if err != nil {
+		return command, err
+	}
+
+	secret := &corev1.Secret{}
+	err = r.Client.Get(ctx, types.NamespacedName{Name: ob.Spec.BackupSecretName, Namespace: ob.Namespace}, secret)
+	if err != nil {
+		return command, err
+	}
+
+	oracleSID := oc.Spec.PodSpec.OracleSID
+	awsID := string(secret.Data[constants.SecretAWSID])
+	awsKey := string(secret.Data[constants.SecretAWSKey])
+	if len(awsID) == 0 || len(awsKey) == 0 {
+		return command, fmt.Errorf("backup secret is error, awsID: %s, awsKey: %s", awsID, awsKey)
+	}
+
+	endPoint := string(secret.Data[constants.SecretEndpoint])
+	if index := strings.Index(endPoint, "//"); index >= 0 {
+		endPoint = endPoint[index+2:]
+	}
+	spEndpoint := strings.Split(endPoint, ":")
+	if len(spEndpoint) != 2 {
+		return command, fmt.Errorf("endpoint split error, endpoint: %s", endPoint)
+	}
+	awsEndpoint := spEndpoint[0]
+	awsPort := spEndpoint[1]
+
+	command = fmt.Sprintf(constants.DefaultOSBWSInstallCmd, oracleSID, awsID, awsKey, awsEndpoint, awsPort)
+	return command, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

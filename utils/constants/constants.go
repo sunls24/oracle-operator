@@ -13,6 +13,10 @@ const (
 	InitPGALimitSize = "INIT_PGA_LIMIT_SIZE"
 	InitSGASize      = "INIT_SGA_SIZE"
 	EnableArchiveLog = "ENABLE_ARCHIVELOG"
+
+	SecretAWSID    = "AWS_ACCESS_KEY_ID"
+	SecretAWSKey   = "AWS_SECRET_KEY"
+	SecretEndpoint = "S3_ENDPOINT"
 )
 
 const (
@@ -36,6 +40,11 @@ const (
 	DefaultCLIImage         = "oracle/instantclient:19-gotty-3"
 	DefaultExporterImage    = "iamseth/oracledb_exporter"
 	DefaultLeaderElectionID = "oracle-operator-leader-election"
+	DefaultOSBWSInstallCmd  = `export ORACLE_HOME=/opt/oracle/oradata/orclhome
+export ORACLE_SID=%s
+mkdir -p $ORACLE_HOME/lib
+mkdir -p $ORACLE_HOME/dbs/osbws_wallet
+java -jar $ORACLE_BASE/osbws_install.jar -walletDir $ORACLE_HOME/dbs/osbws_wallet -AWSID %s -AWSKey %s -awsEndpoint %s -awsPort %s -location default -no-import-certificate -debug -libDir $ORACLE_HOME/lib -useSigV2`
 )
 
 const (

@@ -9,9 +9,9 @@ make run CLI=10.10.236.107:8099/oracle/instantclient:19-gotty-3 NS=default EXPOR
 ### Build
 
 ```shell
-export IMG="10.10.236.107:8099/k8s/oracle/oracle-operator:0.1"
+export IMG="10.10.236.107:8099/k8s/oracle/oracle-operator:0.2"
 docker build -t $IMG .
-docker push 10.10.236.107:8099/k8s/oracle/oracle-operator:0.1
+docker push 10.10.236.107:8099/k8s/oracle/oracle-operator:0.2
 ```
 
 ### Deploy

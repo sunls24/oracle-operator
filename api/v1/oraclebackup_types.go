@@ -31,8 +31,14 @@ type OracleBackupSpec struct {
 
 // OracleBackupStatus defines the observed state of OracleBackup
 type OracleBackupStatus struct {
-	Completed bool `json:"completed,omitempty"`
+	BackupStatus string `json:"backupStatus,omitempty"`
 }
+
+const (
+	BackupStatusRunning   = "Running"
+	BackupStatusCompleted = "Completed"
+	BackupStatusFailed    = "Failed"
+)
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
