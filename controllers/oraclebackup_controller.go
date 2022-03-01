@@ -35,6 +35,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"strings"
+	"time"
 
 	oraclev1 "oracle-operator/api/v1"
 )
@@ -89,36 +90,60 @@ func (r *OracleBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	// TODO: 执行备份命令
-	oraclePod, err := r.clientSet.CoreV1().Pods(req.Namespace).
-		List(ctx, metav1.ListOptions{LabelSelector: fmt.Sprintf("oracle=%s", ob.Spec.ClusterName)})
-	if err != nil || oraclePod == nil || len(oraclePod.Items) == 0 {
-		return ctrl.Result{}, fmt.Errorf("get oracle pod error: %v, oracle pod: %v", err, oraclePod)
+	oc := &oraclev1.OracleCluster{}
+	err = r.Client.Get(ctx, types.NamespacedName{Namespace: ob.Namespace, Name: ob.Spec.ClusterName}, oc)
+	if err != nil {
+		r.log.Info("not found cluster when backup", "backup", ob.Name, "cluster", ob.Spec.ClusterName)
+		return ctrl.Result{}, nil
 	}
 
-	osbwsInstallCmd, err := r.osbwsInstallCmd(ctx, ob)
+	oraclePodList, err := r.clientSet.CoreV1().Pods(oc.Namespace).
+		List(ctx, metav1.ListOptions{LabelSelector: fmt.Sprintf("oracle=%s", oc.Name)})
+	if err != nil || oraclePodList == nil || len(oraclePodList.Items) == 0 {
+		return ctrl.Result{}, fmt.Errorf("get cluster pod error: %v, cluster: %v", err, oc.Name)
+	}
+	var oraclePod = oraclePodList.Items[0]
+
+	for _, c := range oraclePod.Status.ContainerStatuses {
+		if c.Name != constants.ContainerOracle {
+			continue
+		}
+		if !c.Ready {
+			// oracle容器不是Ready状态, 等待5s
+			r.log.Info("oracle container is not ready, wait 5s", "oracle", oc.Name, "podName", oraclePod.Name)
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		}
+		break
+	}
+
+	// TODO: set backup status to Running
+
+	osbwsInstallCmd, err := r.osbwsInstallCmd(ctx, ob, oc)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("get osbwsInstallCmd error: %v", err)
 	}
 
-	err = utils.ExecCommand(r.clientSet, r.Config, req.Namespace, oraclePod.Items[0].Name, constants.ContainerOracle,
-		[]string{"sh", "-c", osbwsInstallCmd})
+	err = r.execCommand(req.Namespace, oraclePod.Name, constants.ContainerOracle, osbwsInstallCmd)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("exec command error: %v", err)
+		return ctrl.Result{}, fmt.Errorf("exec osbwsInstall command error: %v", err)
 	}
+
+	backupCmd := r.backupCommand(oc)
+	err = r.execCommand(req.Namespace, oraclePod.Name, constants.ContainerOracle, backupCmd)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("exec backup command error: %v", err)
+	}
+
+	// TODO: set backup status to Completed
 
 	return ctrl.Result{}, nil
 }
 
-func (r *OracleBackupReconciler) osbwsInstallCmd(ctx context.Context, ob *oraclev1.OracleBackup) (string, error) {
+func (r *OracleBackupReconciler) osbwsInstallCmd(ctx context.Context, ob *oraclev1.OracleBackup, oc *oraclev1.OracleCluster) (string, error) {
 	var command string
-	oc := &oraclev1.OracleCluster{}
-	err := r.Client.Get(ctx, types.NamespacedName{Namespace: ob.Namespace, Name: ob.Spec.ClusterName}, oc)
-	if err != nil {
-		return command, err
-	}
 
 	secret := &corev1.Secret{}
-	err = r.Client.Get(ctx, types.NamespacedName{Name: ob.Spec.BackupSecretName, Namespace: ob.Namespace}, secret)
+	err := r.Client.Get(ctx, types.NamespacedName{Name: ob.Spec.BackupSecretName, Namespace: ob.Namespace}, secret)
 	if err != nil {
 		return command, err
 	}
@@ -143,6 +168,14 @@ func (r *OracleBackupReconciler) osbwsInstallCmd(ctx context.Context, ob *oracle
 
 	command = fmt.Sprintf(constants.DefaultOSBWSInstallCmd, oracleSID, awsID, awsKey, awsEndpoint, awsPort)
 	return command, nil
+}
+
+func (r *OracleBackupReconciler) backupCommand(oc *oraclev1.OracleCluster) string {
+	return fmt.Sprintf(constants.DefaultBackupCmd, oc.Spec.PodSpec.OracleSID)
+}
+
+func (r *OracleBackupReconciler) execCommand(namespace, podName, container, command string) error {
+	return utils.ExecCommand(r.clientSet, r.Config, namespace, podName, container, []string{"sh", "-c", command})
 }
 
 // SetupWithManager sets up the controller with the Manager.
