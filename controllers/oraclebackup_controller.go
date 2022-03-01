@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -84,8 +85,8 @@ func (r *OracleBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	if len(ob.Status.BackupStatus) != 0 {
-		// 已经备份完成或者正在备份
+	if len(ob.Status.BackupStatus) != 0 && ob.Status.BackupStatus != oraclev1.BackupStatusFailed {
+		// 已经完成备份或者正在备份
 		return ctrl.Result{}, nil
 	}
 
@@ -116,26 +117,40 @@ func (r *OracleBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		break
 	}
 
-	// TODO: set backup status to Running
+	ob.Status.BackupStatus = oraclev1.BackupStatusRunning
+	err = r.Status().Update(ctx, ob)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	old := ob.DeepCopy()
+	defer func() {
+		err = r.updateBackup(ctx, old, ob)
+		if err != nil {
+			r.log.Error(err, "update backup status error")
+		}
+	}()
 
 	osbwsInstallCmd, err := r.osbwsInstallCmd(ctx, ob, oc)
 	if err != nil {
+		ob.Status.BackupStatus = oraclev1.BackupStatusFailed
 		return ctrl.Result{}, fmt.Errorf("get osbwsInstallCmd error: %v", err)
 	}
 
 	err = r.execCommand(req.Namespace, oraclePod.Name, constants.ContainerOracle, osbwsInstallCmd)
 	if err != nil {
+		ob.Status.BackupStatus = oraclev1.BackupStatusFailed
 		return ctrl.Result{}, fmt.Errorf("exec osbwsInstall command error: %v", err)
 	}
 
 	backupCmd := r.backupCommand(oc)
 	err = r.execCommand(req.Namespace, oraclePod.Name, constants.ContainerOracle, backupCmd)
 	if err != nil {
+		ob.Status.BackupStatus = oraclev1.BackupStatusFailed
 		return ctrl.Result{}, fmt.Errorf("exec backup command error: %v", err)
 	}
 
-	// TODO: set backup status to Completed
-
+	ob.Status.BackupStatus = oraclev1.BackupStatusCompleted
 	return ctrl.Result{}, nil
 }
 
@@ -176,6 +191,15 @@ func (r *OracleBackupReconciler) backupCommand(oc *oraclev1.OracleCluster) strin
 
 func (r *OracleBackupReconciler) execCommand(namespace, podName, container, command string) error {
 	return utils.ExecCommand(r.clientSet, r.Config, namespace, podName, container, []string{"sh", "-c", command})
+}
+
+func (r *OracleBackupReconciler) updateBackup(ctx context.Context, old, ob *oraclev1.OracleBackup) error {
+	// TODO：Currently only the status needs to be updated
+	if equality.Semantic.DeepEqual(old.Status, ob.Status) {
+		return nil
+	}
+	r.log.Info("update backup status", "old", old.Status, "new", ob.Status)
+	return r.Client.Status().Update(ctx, ob)
 }
 
 // SetupWithManager sets up the controller with the Manager.
