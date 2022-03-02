@@ -109,26 +109,6 @@ func (in *OracleCluster) MemoryValue() int64 {
 	return mem
 }
 
-func (in *OracleCluster) AddFinalizer(finalizer string) {
-	for _, f := range in.Finalizers {
-		if f == finalizer {
-			return
-		}
-	}
-	in.Finalizers = append(in.Finalizers, finalizer)
-}
-
-func (in *OracleCluster) DeleteFinalizer(finalizer string) {
-	var newList []string
-	for _, f := range in.Finalizers {
-		if f == finalizer {
-			continue
-		}
-		newList = append(newList, f)
-	}
-	in.Finalizers = newList
-}
-
 func (in *OracleCluster) SetStatus(statefulSet *appv1.StatefulSet) {
 	in.Status.Ready = corev1.ConditionFalse
 	if statefulSet.Status.ReadyReplicas == constants.DefaultReplicas {

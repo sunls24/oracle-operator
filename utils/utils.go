@@ -2,6 +2,7 @@ package utils
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -80,4 +81,29 @@ func ExecCommand(client kubernetes.Interface, config *rest.Config, namespace, po
 	err = exec.Stream(remotecommand.StreamOptions{Stdout: os.Stdout, Stderr: os.Stderr})
 	log.FromContext(nil).Info("exec command end")
 	return err
+}
+
+func AddFinalizer(obj metav1.Object, finalizer string) bool {
+	fs := obj.GetFinalizers()
+	for _, f := range fs {
+		if f == finalizer {
+			return false
+		}
+	}
+	fs = append(fs, finalizer)
+	obj.SetFinalizers(fs)
+	return true
+}
+
+func DeleteFinalizer(obj metav1.Object, finalizer string) bool {
+	fs := obj.GetFinalizers()
+	var newList []string
+	for _, f := range fs {
+		if f == finalizer {
+			continue
+		}
+		newList = append(newList, f)
+	}
+	obj.SetFinalizers(newList)
+	return len(fs) != len(newList)
 }
