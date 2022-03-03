@@ -23,48 +23,41 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// OracleBackupSpec defines the desired state of OracleBackup
-type OracleBackupSpec struct {
-	ClusterName      string `json:"clusterName,omitempty"`
-	BackupSecretName string `json:"backupSecretName,omitempty"`
+// OracleRestoreSpec defines the desired state of OracleRestore
+type OracleRestoreSpec struct {
+	ClusterName string `json:"clusterName,omitempty"`
+	BackupTag   string `json:"backupTag,omitempty"`
 }
 
-// OracleBackupStatus defines the observed state of OracleBackup
-type OracleBackupStatus struct {
-	BackupStatus string `json:"backupStatus,omitempty"`
-	BackupTag    string `json:"backupTag,omitempty"`
+// OracleRestoreStatus defines the observed state of OracleRestore
+type OracleRestoreStatus struct {
+	RestoreStatus string `json:"restoreStatus,omitempty"`
 }
-
-const (
-	BackupStatusRunning   = "Running"
-	BackupStatusCompleted = "Completed"
-	BackupStatusFailed    = "Failed"
-)
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
-//+kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.backupStatus"
+//+kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.restoreStatus"
 //+kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
-//+kubebuilder:resource:shortName=oraclebackup
+//+kubebuilder:resource:shortName=oraclerestore
 
-// OracleBackup is the Schema for the oraclebackups API
-type OracleBackup struct {
+// OracleRestore is the Schema for the oraclerestores API
+type OracleRestore struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   OracleBackupSpec   `json:"spec,omitempty"`
-	Status OracleBackupStatus `json:"status,omitempty"`
+	Spec   OracleRestoreSpec   `json:"spec,omitempty"`
+	Status OracleRestoreStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// OracleBackupList contains a list of OracleBackup
-type OracleBackupList struct {
+// OracleRestoreList contains a list of OracleRestore
+type OracleRestoreList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []OracleBackup `json:"items"`
+	Items           []OracleRestore `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&OracleBackup{}, &OracleBackupList{})
+	SchemeBuilder.Register(&OracleRestore{}, &OracleRestoreList{})
 }

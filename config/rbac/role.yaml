@@ -84,3 +84,29 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - oracle.iwhalecloud.com
+  resources:
+  - oraclerestores
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - oracle.iwhalecloud.com
+  resources:
+  - oraclerestores/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - oracle.iwhalecloud.com
+  resources:
+  - oraclerestores/status
+  verbs:
+  - get
+  - patch
+  - update

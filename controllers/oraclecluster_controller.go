@@ -46,9 +46,9 @@ import (
 type OracleClusterReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
-	opt    *options.Options
 
 	log      logr.Logger
+	opt      *options.Options
 	recorder record.EventRecorder
 }
 
@@ -223,6 +223,7 @@ func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, oc *
 			{Name: constants.InitPGASize, Value: initPGA},
 			{Name: constants.InitPGALimitSize, Value: initPGALimit},
 			{Name: constants.InitSGASize, Value: initSGA},
+			{Name: constants.StartupMode, Value: oc.Spec.StartupMode},
 		}...)
 		oracleEnv = utils.MergeEnv(oracleEnv, oc.Spec.PodSpec.OracleEnv)
 		oracleCLIEnv := utils.MergeEnv(baseEnv, oc.Spec.PodSpec.OracleCLIEnv)

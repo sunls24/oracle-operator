@@ -6,20 +6,20 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.7.0
   creationTimestamp: null
-  name: oraclebackups.oracle.iwhalecloud.com
+  name: oraclerestores.oracle.iwhalecloud.com
 spec:
   group: oracle.iwhalecloud.com
   names:
-    kind: OracleBackup
-    listKind: OracleBackupList
-    plural: oraclebackups
+    kind: OracleRestore
+    listKind: OracleRestoreList
+    plural: oraclerestores
     shortNames:
-    - oraclebackup
-    singular: oraclebackup
+    - oraclerestore
+    singular: oraclerestore
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .status.backupStatus
+    - jsonPath: .status.restoreStatus
       name: Status
       type: string
     - jsonPath: .metadata.creationTimestamp
@@ -28,7 +28,7 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: OracleBackup is the Schema for the oraclebackups API
+        description: OracleRestore is the Schema for the oraclerestores API
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
@@ -43,19 +43,17 @@ spec:
           metadata:
             type: object
           spec:
-            description: OracleBackupSpec defines the desired state of OracleBackup
+            description: OracleRestoreSpec defines the desired state of OracleRestore
             properties:
-              backupSecretName:
+              backupTag:
                 type: string
               clusterName:
                 type: string
             type: object
           status:
-            description: OracleBackupStatus defines the observed state of OracleBackup
+            description: OracleRestoreStatus defines the observed state of OracleRestore
             properties:
-              backupStatus:
-                type: string
-              backupTag:
+              restoreStatus:
                 type: string
             type: object
         type: object

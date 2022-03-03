@@ -6,7 +6,7 @@ rules:
   - apiGroups:
       - apps
     resources:
-      - deployments
+      - statefulsets
     verbs:
       - create
       - delete
@@ -19,7 +19,6 @@ rules:
       - ""
     resources:
       - events
-      - persistentvolumeclaims
       - secrets
       - services
     verbs:
@@ -30,6 +29,32 @@ rules:
       - patch
       - update
       - watch
+  - apiGroups:
+      - oracle.iwhalecloud.com
+    resources:
+      - oraclebackups
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - oracle.iwhalecloud.com
+    resources:
+      - oraclebackups/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - oracle.iwhalecloud.com
+    resources:
+      - oraclebackups/status
+    verbs:
+      - get
+      - patch
+      - update
   - apiGroups:
       - oracle.iwhalecloud.com
     resources:
@@ -52,6 +77,32 @@ rules:
       - oracle.iwhalecloud.com
     resources:
       - oracleclusters/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - oracle.iwhalecloud.com
+    resources:
+      - oraclerestores
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - oracle.iwhalecloud.com
+    resources:
+      - oraclerestores/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - oracle.iwhalecloud.com
+    resources:
+      - oraclerestores/status
     verbs:
       - get
       - patch

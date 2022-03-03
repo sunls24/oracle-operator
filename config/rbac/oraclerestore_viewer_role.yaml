@@ -1,0 +1,20 @@
+# permissions for end users to view oraclerestores.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: oraclerestore-viewer-role
+rules:
+- apiGroups:
+  - oracle.iwhalecloud.com
+  resources:
+  - oraclerestores
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - oracle.iwhalecloud.com
+  resources:
+  - oraclerestores/status
+  verbs:
+  - get

@@ -33,6 +33,7 @@ type OracleClusterSpec struct {
 	Password    string `json:"password,omitempty"`
 	NodePort    int32  `json:"nodePort,omitempty"`
 	ArchiveMode bool   `json:"archiveMode,omitempty"`
+	StartupMode string `json:"startupMode,omitempty"`
 
 	PodSpec    PodSpec    `json:"podSpec,omitempty"`
 	VolumeSpec VolumeSpec `json:"volumeSpec,omitempty"`

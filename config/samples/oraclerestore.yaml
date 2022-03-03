@@ -1,0 +1,6 @@
+apiVersion: oracle.iwhalecloud.com/v1
+kind: OracleRestore
+metadata:
+  name: oraclerestore-sample
+spec:
+  # TODO(user): Add fields here

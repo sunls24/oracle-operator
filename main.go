@@ -18,6 +18,7 @@ package main
 
 import (
 	"flag"
+	"k8s.io/client-go/kubernetes"
 	"os"
 
 	"oracle-operator/utils/constants"
@@ -85,6 +86,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	clientset, err := kubernetes.NewForConfig(mgr.GetConfig())
+	if err != nil {
+		setupLog.Error(err, "unable to new clientset by config")
+		os.Exit(1)
+	}
+
 	if err = (&controllers.OracleClusterReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
@@ -93,11 +100,21 @@ func main() {
 		os.Exit(1)
 	}
 	if err = (&controllers.OracleBackupReconciler{
-		Config: mgr.GetConfig(),
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Clientset: clientset,
+		Config:    mgr.GetConfig(),
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "OracleBackup")
+		os.Exit(1)
+	}
+	if err = (&controllers.OracleRestoreReconciler{
+		Clientset: clientset,
+		Config:    mgr.GetConfig(),
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "OracleRestore")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder

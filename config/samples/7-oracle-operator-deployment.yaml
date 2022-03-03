@@ -23,6 +23,7 @@ spec:
         - name: operator
           image: 10.10.236.107:8099/k8s/oracle/oracle-operator:0.1
           args:
+            - -exporter-image=10.10.236.107:8099/k8s/oracle/oracledb_exporter:custom
             - -cli-image=10.10.236.107:8099/oracle/instantclient:19-gotty-3
             - -namespace=default
             - -leader-elect=true

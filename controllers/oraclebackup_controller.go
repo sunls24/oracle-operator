@@ -46,13 +46,14 @@ const finalizeBackupCleanup = "backup-cleanup"
 // OracleBackupReconciler reconciles a OracleBackup object
 type OracleBackupReconciler struct {
 	*rest.Config
+	*kubernetes.Clientset
+
 	client.Client
 	Scheme *runtime.Scheme
-	opt    *options.Options
 
-	log       logr.Logger
-	recorder  record.EventRecorder
-	clientSet *kubernetes.Clientset
+	log      logr.Logger
+	opt      *options.Options
+	recorder record.EventRecorder
 }
 
 //+kubebuilder:rbac:groups=oracle.iwhalecloud.com,resources=oraclebackups,verbs=get;list;watch;create;update;patch;delete
@@ -221,11 +222,11 @@ func (r *OracleBackupReconciler) backupDeleteCommand(backupTag string) string {
 }
 
 func (r *OracleBackupReconciler) execCommand(namespace, podName, container, command string) error {
-	return utils.ExecCommand(r.clientSet, r.Config, namespace, podName, container, []string{"sh", "-c", command})
+	return utils.ExecCommand(r.Clientset, r.Config, namespace, podName, container, []string{"sh", "-c", command})
 }
 
 func (r *OracleBackupReconciler) getOraclePod(ctx context.Context, ob *oraclev1.OracleBackup) (*corev1.Pod, error) {
-	oraclePodList, err := r.clientSet.CoreV1().Pods(ob.Namespace).
+	oraclePodList, err := r.Clientset.CoreV1().Pods(ob.Namespace).
 		List(ctx, metav1.ListOptions{LabelSelector: fmt.Sprintf("oracle=%s", ob.Spec.ClusterName)})
 	if err != nil || oraclePodList == nil || len(oraclePodList.Items) == 0 {
 		return nil, fmt.Errorf("get oracle pod error: %v, oracle: %v", err, ob.Spec.ClusterName)
@@ -244,13 +245,8 @@ func (r *OracleBackupReconciler) updateBackup(ctx context.Context, old, ob *orac
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *OracleBackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	r.recorder = mgr.GetEventRecorderFor("oraclecluster-controller")
+	r.recorder = mgr.GetEventRecorderFor("oraclebackup-controller")
 	r.opt = options.GetOptions()
-	var err error
-	r.clientSet, err = kubernetes.NewForConfig(r.Config)
-	if err != nil {
-		return err
-	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&oraclev1.OracleBackup{}).
 		Complete(r)
