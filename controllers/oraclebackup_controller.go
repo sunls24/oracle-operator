@@ -23,7 +23,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -83,8 +82,8 @@ func (r *OracleBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	r.log.Info("Start Reconcile")
 
-	if r.backupFinalize(ctx, ob) {
-		return ctrl.Result{}, nil
+	if exit, err := r.backupFinalizer(ctx, ob); exit {
+		return ctrl.Result{}, err
 	}
 
 	if len(ob.Status.BackupStatus) != 0 && ob.Status.BackupStatus != oraclev1.BackupStatusFailed {
@@ -147,38 +146,35 @@ func (r *OracleBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	return ctrl.Result{}, nil
 }
 
-func (r *OracleBackupReconciler) backupFinalize(ctx context.Context, ob *oraclev1.OracleBackup) bool {
+func (r *OracleBackupReconciler) backupFinalizer(ctx context.Context, ob *oraclev1.OracleBackup) (bool, error) {
 	if ob.DeletionTimestamp == nil {
 		if !utils.AddFinalizer(ob, finalizeBackupCleanup) {
-			return false
+			return false, nil
 		}
 		err := r.Client.Update(ctx, ob)
 		if err != nil {
 			r.log.Error(err, "add finalizer error")
 		}
-		return false
+		return false, nil
 	}
 	if !utils.DeleteFinalizer(ob, finalizeBackupCleanup) {
-		return true
+		return true, nil
 	}
-	err := r.Client.Update(ctx, ob)
-	if err != nil {
-		r.log.Error(err, "delete finalizer error")
-	}
+
 	if len(ob.Status.BackupTag) == 0 {
-		return true
+		return true, r.Client.Update(ctx, ob)
 	}
+
 	// 删除备份
 	oraclePod, err := r.getOraclePod(ctx, ob)
 	if err != nil {
-		r.log.Error(err, "backup finalize error")
-		return true
+		return true, fmt.Errorf("handle backup finalizer error: %v", err)
 	}
 	err = r.execCommand(ob.Namespace, oraclePod.Name, constants.ContainerOracle, r.backupDeleteCommand(ob.Status.BackupTag))
 	if err != nil {
-		r.log.Error(err, "backup delete error")
+		return true, fmt.Errorf("backup delete command error: %v", err)
 	}
-	return true
+	return true, r.Client.Update(ctx, ob)
 }
 
 func (r *OracleBackupReconciler) osbwsInstallCmd(ctx context.Context, ob *oraclev1.OracleBackup, oc *oraclev1.OracleCluster) (string, error) {
@@ -226,10 +222,10 @@ func (r *OracleBackupReconciler) execCommand(namespace, podName, container, comm
 }
 
 func (r *OracleBackupReconciler) getOraclePod(ctx context.Context, ob *oraclev1.OracleBackup) (*corev1.Pod, error) {
-	oraclePodList, err := r.Clientset.CoreV1().Pods(ob.Namespace).
-		List(ctx, metav1.ListOptions{LabelSelector: fmt.Sprintf("oracle=%s", ob.Spec.ClusterName)})
-	if err != nil || oraclePodList == nil || len(oraclePodList.Items) == 0 {
-		return nil, fmt.Errorf("get oracle pod error: %v, oracle: %v", err, ob.Spec.ClusterName)
+	oraclePodList := corev1.PodList{}
+	err := r.Client.List(ctx, &oraclePodList, client.MatchingLabels(map[string]string{"oracle": ob.Spec.ClusterName}))
+	if err != nil || len(oraclePodList.Items) == 0 {
+		return nil, fmt.Errorf("not found oracle pod: %v", err)
 	}
 	return &oraclePodList.Items[0], nil
 }

@@ -42,6 +42,8 @@ import (
 	"strings"
 )
 
+const finalizerBackupDelete = "backup-delete"
+
 // OracleClusterReconciler reconciles a OracleCluster object
 type OracleClusterReconciler struct {
 	client.Client
@@ -83,6 +85,11 @@ func (r *OracleClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	r.log.Info("Start Reconcile")
+
+	if exit, err := r.backupFinalizer(ctx, oc); exit {
+		return ctrl.Result{}, err
+	}
+
 	old := oc.DeepCopy()
 	oc.SetDefault()
 
@@ -103,6 +110,38 @@ func (r *OracleClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	err = r.updateCluster(ctx, old, oc)
 	return ctrl.Result{}, err
+}
+
+func (r *OracleClusterReconciler) backupFinalizer(ctx context.Context, oc *oraclev1.OracleCluster) (bool, error) {
+	if oc.DeletionTimestamp == nil {
+		if !utils.AddFinalizer(oc, finalizerBackupDelete) {
+			return false, nil
+		}
+		err := r.Client.Update(ctx, oc)
+		if err != nil {
+			r.log.Error(err, "add finalizer error")
+		}
+		return false, nil
+	}
+	if !utils.DeleteFinalizer(oc, finalizerBackupDelete) {
+		return true, nil
+	}
+
+	backupList := oraclev1.OracleBackupList{}
+	err := r.Client.List(ctx, &backupList, client.MatchingLabels(map[string]string{"oracle": oc.Name}))
+	if err != nil {
+		return true, err
+	}
+	if len(backupList.Items) == 0 {
+		return true, r.Client.Update(ctx, oc)
+	}
+	for i := range backupList.Items {
+		err = r.Client.Delete(ctx, &backupList.Items[i])
+		if err != nil {
+			return true, err
+		}
+	}
+	return true, r.Client.Update(ctx, oc)
 }
 
 func decodePWD(in string) ([]byte, error) {

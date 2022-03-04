@@ -41,7 +41,8 @@ const (
 	DefaultCLIImage         = "oracle/instantclient:19-gotty-3"
 	DefaultExporterImage    = "iamseth/oracledb_exporter"
 	DefaultLeaderElectionID = "oracle-operator-leader-election"
-	DefaultOSBWSInstallCmd  = `
+
+	DefaultOSBWSInstallCmd = `
 export ORACLE_HOME=/opt/oracle/oradata/orclhome
 export ORACLE_SID=%s
 if [ -a ${ORACLE_HOME}/dbs/osbws${ORACLE_SID}.ora ]; then
@@ -56,7 +57,7 @@ export BACKUP_HOME=/opt/oracle/oradata/orclhome
 export ORACLE_SID=%s
 export BACKUP_TAG=%s
 rman target / <<EOF
-CONFIGURE DEVICE TYPE 'SBT_TAPE' PARALLELISM 32 BACKUP TYPE TO BACKUPSET;
+CONFIGURE DEVICE TYPE 'SBT_TAPE' PARALLELISM 4 BACKUP TYPE TO BACKUPSET;
 CONFIGURE CHANNEL DEVICE TYPE SBT parms='SBT_LIBRARY=${BACKUP_HOME}/lib/libosbws.so,SBT_PARMS=(OSB_WS_PFILE=${BACKUP_HOME}/dbs/osbws${ORACLE_SID}.ora)';
 CONFIGURE DEFAULT DEVICE TYPE TO SBT;
 CONFIGURE COMPRESSION ALGORITHM clear;
@@ -65,7 +66,7 @@ SHOW ALL;
 RUN {
   BACKUP DATABASE SECTION SIZE=4G TAG='${BACKUP_TAG}' PLUS ARCHIVELOG DELETE INPUT TAG='${BACKUP_TAG}';
 }
-EXIT
+EXIT;
 EOF`
 
 	DefaultBackupDeleteCmd = `
@@ -73,9 +74,28 @@ rman target / <<EOF
 RUN {
   DELETE NOPROMPT BACKUP TAG='%s';
 }
-EXIT
+EXIT;
+EOF`
+
+	DefaultRestoreCmd = `
+export BACKUP_TAG=%s
+sqlplus / as sysdba <<EOF
+SHUTDOWN IMMEDIATE;
+STARTUP MOUNT;
+EXIT;
 EOF
-`
+rman target / <<EOF
+RUN {
+  RESTORE DATABASE FROM TAG='${BACKUP_TAG}';
+  RECOVER DATABASE FROM TAG='${BACKUP_TAG}';
+}
+EXIT;
+EOF
+sqlplus / as sysdba <<EOF
+RECOVER DATABASE UNTIL CANCEL USING BACKUP CONTROLFILE;
+CANCEL
+ALTER DATABASE OPEN RESETLOGS;
+EOF`
 )
 
 const (
