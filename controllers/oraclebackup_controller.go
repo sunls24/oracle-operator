@@ -20,8 +20,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/go-logr/logr"
+	xerr "github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -75,75 +75,80 @@ func (r *OracleBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	ob := &oraclev1.OracleBackup{}
 	err := r.Get(ctx, req.NamespacedName, ob)
 	if err != nil {
-		if errors.IsNotFound(err) {
-			return ctrl.Result{}, nil
-		}
-		return ctrl.Result{}, err
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	r.log.Info("Start Reconcile")
 
 	if exit, err := r.backupFinalizer(ctx, ob); exit {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, xerr.Wrap(err, "backup finalizer")
 	}
 
-	if len(ob.Status.BackupStatus) != 0 && ob.Status.BackupStatus != oraclev1.BackupStatusFailed {
+	if len(ob.Status.BackupStatus) != 0 && ob.Status.BackupStatus != constants.StatusFailed {
 		// 已经完成备份或者正在备份
 		return ctrl.Result{}, nil
 	}
 
 	oc := &oraclev1.OracleCluster{}
-	err = r.Client.Get(ctx, types.NamespacedName{Namespace: ob.Namespace, Name: ob.Spec.ClusterName}, oc)
+	err = r.Get(ctx, key(ob.Namespace, ob.Spec.ClusterName), oc)
 	if err != nil {
-		r.log.Error(err, "not found cluster when backup", "cluster", ob.Spec.ClusterName)
+		r.log.Error(err, "not found cluster when backup")
 		return ctrl.Result{}, nil
 	}
 
-	if oc.Status.Ready != corev1.ConditionTrue {
-		r.log.Info("oracle status is not ready, wait 5s", "oracle", oc.Name)
+	if oc.Status.Status != oraclev1.ClusterStatusTrue && oc.Status.Status != oraclev1.ClusterStatusBackingUp {
+		r.log.Info("oracle status is not true, wait 5s", "oracle", oc.Name, "status", oc.Status.Status)
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
-	oraclePod, err := r.getOraclePod(ctx, ob)
+	oraclePod, err := oc.GetPod(ctx, r.Client)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	ob.Status.BackupStatus = oraclev1.BackupStatusRunning
-	err = r.Status().Update(ctx, ob)
-	if err != nil {
-		return ctrl.Result{}, err
+	oc.Status.Status = oraclev1.ClusterStatusBackingUp
+	if err = r.Status().Update(ctx, oc); err != nil {
+		return ctrl.Result{}, xerr.Wrap(err, "update cluster status")
 	}
-
-	old := ob.DeepCopy()
 	defer func() {
-		err = r.updateBackup(ctx, old, ob)
-		if err != nil {
+		_ = r.Get(ctx, key(oc.Namespace, oc.Name), oc)
+		oc.Status.Status = oraclev1.ClusterStatusWaiting
+		if err = r.Status().Update(ctx, oc); err != nil {
+			r.log.Error(err, "update cluster status error")
+		}
+	}()
+
+	ob.Status.BackupStatus = constants.StatusRunning
+	if err = r.Status().Update(ctx, ob); err != nil {
+		return ctrl.Result{}, xerr.Wrap(err, "update backup status")
+	}
+	defer func() {
+		if err = r.Status().Update(ctx, ob); err != nil {
 			r.log.Error(err, "update backup status error")
 		}
 	}()
 
 	osbwsInstallCmd, err := r.osbwsInstallCmd(ctx, ob, oc)
 	if err != nil {
-		ob.Status.BackupStatus = oraclev1.BackupStatusFailed
-		return ctrl.Result{}, fmt.Errorf("get osbwsInstallCmd error: %v", err)
+		ob.Status.BackupStatus = constants.StatusFailed
+		return ctrl.Result{}, xerr.Wrap(err, "get osbwsInstallCmd")
 	}
 
 	err = r.execCommand(req.Namespace, oraclePod.Name, constants.ContainerOracle, osbwsInstallCmd)
 	if err != nil {
-		ob.Status.BackupStatus = oraclev1.BackupStatusFailed
-		return ctrl.Result{}, fmt.Errorf("exec osbwsInstall command error: %v", err)
+		ob.Status.BackupStatus = constants.StatusFailed
+		return ctrl.Result{}, xerr.Wrap(err, "exec osbwsInstall command")
 	}
 
 	backupCmd, backupTag := r.backupCommand(oc)
 	err = r.execCommand(req.Namespace, oraclePod.Name, constants.ContainerOracle, backupCmd)
 	if err != nil {
-		ob.Status.BackupStatus = oraclev1.BackupStatusFailed
-		return ctrl.Result{}, fmt.Errorf("exec backup command error: %v", err)
+		ob.Status.BackupStatus = constants.StatusFailed
+		return ctrl.Result{}, xerr.Wrap(err, "exec backup command")
 	}
 
 	ob.Status.BackupTag = backupTag
-	ob.Status.BackupStatus = oraclev1.BackupStatusCompleted
+	ob.Status.BackupStatus = constants.StatusCompleted
 	return ctrl.Result{}, nil
 }
 
@@ -152,12 +157,12 @@ func (r *OracleBackupReconciler) backupFinalizer(ctx context.Context, ob *oracle
 		if !utils.AddFinalizer(ob, finalizeBackupCleanup) {
 			return false, nil
 		}
-		err := r.Client.Update(ctx, ob)
-		if err != nil {
+		if err := r.Client.Update(ctx, ob); err != nil {
 			r.log.Error(err, "add finalizer error")
 		}
 		return false, nil
 	}
+
 	if !utils.DeleteFinalizer(ob, finalizeBackupCleanup) {
 		return true, nil
 	}
@@ -166,14 +171,23 @@ func (r *OracleBackupReconciler) backupFinalizer(ctx context.Context, ob *oracle
 		return true, r.Client.Update(ctx, ob)
 	}
 
-	// 删除备份
-	oraclePod, err := r.getOraclePod(ctx, ob)
+	oc := &oraclev1.OracleCluster{}
+	err := r.Get(ctx, key(ob.Namespace, ob.Spec.ClusterName), oc)
 	if err != nil {
-		return true, fmt.Errorf("handle backup finalizer error: %v", err)
+		if errors.IsNotFound(err) {
+			return true, r.Client.Update(ctx, ob)
+		}
+		return true, xerr.Wrap(err, "not found oracle")
 	}
+
+	oraclePod, err := oc.GetPod(ctx, r.Client)
+	if err != nil {
+		return true, err
+	}
+
 	err = r.execCommand(ob.Namespace, oraclePod.Name, constants.ContainerOracle, r.backupDeleteCommand(ob.Status.BackupTag))
 	if err != nil {
-		return true, fmt.Errorf("backup delete command error: %v", err)
+		return true, xerr.Wrap(err, "exec delete backup command")
 	}
 	return true, r.Client.Update(ctx, ob)
 }
@@ -220,24 +234,6 @@ func (r *OracleBackupReconciler) backupDeleteCommand(backupTag string) string {
 
 func (r *OracleBackupReconciler) execCommand(namespace, podName, container, command string) error {
 	return utils.ExecCommand(r.Clientset, r.Config, namespace, podName, container, []string{"sh", "-c", command})
-}
-
-func (r *OracleBackupReconciler) getOraclePod(ctx context.Context, ob *oraclev1.OracleBackup) (*corev1.Pod, error) {
-	oraclePodList := corev1.PodList{}
-	err := r.Client.List(ctx, &oraclePodList, client.MatchingLabels(map[string]string{"oracle": ob.Spec.ClusterName}))
-	if err != nil || len(oraclePodList.Items) == 0 {
-		return nil, fmt.Errorf("not found oracle pod: %v", err)
-	}
-	return &oraclePodList.Items[0], nil
-}
-
-func (r *OracleBackupReconciler) updateBackup(ctx context.Context, old, ob *oraclev1.OracleBackup) error {
-	// TODO：Currently only the status needs to be updated
-	if equality.Semantic.DeepEqual(old.Status, ob.Status) {
-		return nil
-	}
-	r.log.Info("update backup status", "old", old.Status, "new", ob.Status)
-	return r.Client.Status().Update(ctx, ob)
 }
 
 // SetupWithManager sets up the controller with the Manager.

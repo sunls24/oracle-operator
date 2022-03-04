@@ -26,7 +26,7 @@ import (
 // OracleRestoreSpec defines the desired state of OracleRestore
 type OracleRestoreSpec struct {
 	ClusterName string `json:"clusterName,omitempty"`
-	BackupTag   string `json:"backupTag,omitempty"`
+	BackupName  string `json:"backupName,omitempty"`
 }
 
 // OracleRestoreStatus defines the observed state of OracleRestore

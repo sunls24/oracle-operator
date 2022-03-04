@@ -41,7 +41,22 @@ const (
 	DefaultCLIImage         = "oracle/instantclient:19-gotty-3"
 	DefaultExporterImage    = "iamseth/oracledb_exporter"
 	DefaultLeaderElectionID = "oracle-operator-leader-election"
+)
 
+const (
+	ReasonSuccessfulCreate = "SuccessfulCreate"
+	ReasonReconciling      = "Reconciling"
+)
+
+const (
+	StatusRunning   = "Running"
+	StatusCompleted = "Completed"
+	StatusFailed    = "Failed"
+)
+
+var ExportAnnotations = map[string]string{"prometheus.io/port": strconv.Itoa(int(DefaultExportPort)), "prometheus.io/scrape": "true"}
+
+const (
 	DefaultOSBWSInstallCmd = `
 export ORACLE_HOME=/opt/oracle/oradata/orclhome
 export ORACLE_SID=%s
@@ -97,10 +112,3 @@ CANCEL
 ALTER DATABASE OPEN RESETLOGS;
 EOF`
 )
-
-const (
-	ReasonSuccessfulCreate = "SuccessfulCreate"
-	ReasonReconciling      = "Reconciling"
-)
-
-var ExportAnnotations = map[string]string{"prometheus.io/port": strconv.Itoa(int(DefaultExportPort)), "prometheus.io/scrape": "true"}

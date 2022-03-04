@@ -17,11 +17,13 @@ limitations under the License.
 package v1
 
 import (
+	"context"
 	"fmt"
 	appv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"oracle-operator/utils/constants"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -40,6 +42,7 @@ type OracleClusterSpec struct {
 }
 
 const (
+	ClusterStatusTrue      = string(corev1.ConditionTrue)
 	ClusterStatusWaiting   = "Waiting"
 	ClusterStatusBackingUp = "BackingUp"
 	ClusterStatusRestoring = "Restoring"
@@ -122,6 +125,10 @@ func (in *OracleCluster) SetStatus(statefulSet *appv1.StatefulSet) {
 	if statefulSet.Status.ReadyReplicas == constants.DefaultReplicas {
 		in.Status.Ready = corev1.ConditionTrue
 	}
+
+	if in.Status.Status != ClusterStatusRestoring && in.Status.Status != ClusterStatusBackingUp {
+		in.Status.Status = string(in.Status.Ready)
+	}
 }
 
 func (in *OracleCluster) SetDefault() {
@@ -131,6 +138,15 @@ func (in *OracleCluster) SetDefault() {
 	if len(in.Spec.PodSpec.OracleSID) == 0 {
 		in.Spec.PodSpec.OracleSID = constants.DefaultOracleSID
 	}
+}
+
+func (in *OracleCluster) GetPod(ctx context.Context, c client.Client) (*corev1.Pod, error) {
+	podList := corev1.PodList{}
+	err := c.List(ctx, &podList, client.MatchingLabels(map[string]string{"oracle": in.Name}))
+	if err != nil || len(podList.Items) == 0 {
+		return nil, fmt.Errorf("not found oracle pod: %v, oracle: %s", err, in.Name)
+	}
+	return &podList.Items[0], nil
 }
 
 func init() {

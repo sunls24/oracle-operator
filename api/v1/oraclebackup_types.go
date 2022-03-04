@@ -35,12 +35,6 @@ type OracleBackupStatus struct {
 	BackupTag    string `json:"backupTag,omitempty"`
 }
 
-const (
-	BackupStatusRunning   = "Running"
-	BackupStatusCompleted = "Completed"
-	BackupStatusFailed    = "Failed"
-)
-
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 //+kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.backupStatus"

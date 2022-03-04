@@ -14,6 +14,7 @@ type Options struct {
 	OSBWSInstallCmd string
 	BackupCmd       string
 	BackupDeleteCmd string
+	RestoreCmd      string
 }
 
 func (o *Options) AddFlags() {
@@ -24,6 +25,7 @@ func (o *Options) AddFlags() {
 	flag.StringVar(&o.OSBWSInstallCmd, "osbws-install-cmd", constants.DefaultOSBWSInstallCmd, "osbws_install.jar command install template")
 	flag.StringVar(&o.BackupCmd, "backup-cmd", constants.DefaultBackupCmd, "backup command template")
 	flag.StringVar(&o.BackupDeleteCmd, "backup-delete-cmd", constants.DefaultBackupDeleteCmd, "backup delete command template")
+	flag.StringVar(&o.RestoreCmd, "restore-cmd", constants.DefaultRestoreCmd, "restore backup command template")
 }
 
 var instance *Options

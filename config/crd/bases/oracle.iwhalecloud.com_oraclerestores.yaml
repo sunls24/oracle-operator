@@ -45,7 +45,7 @@ spec:
           spec:
             description: OracleRestoreSpec defines the desired state of OracleRestore
             properties:
-              backupTag:
+              backupName:
                 type: string
               clusterName:
                 type: string
