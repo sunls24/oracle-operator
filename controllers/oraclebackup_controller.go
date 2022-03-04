@@ -34,6 +34,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"strings"
 	"time"
 
@@ -243,7 +244,19 @@ func (r *OracleBackupReconciler) updateBackup(ctx context.Context, old, ob *orac
 func (r *OracleBackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.recorder = mgr.GetEventRecorderFor("oraclebackup-controller")
 	r.opt = options.GetOptions()
+
+	if err := addBackupFieldIndexers(mgr); err != nil {
+		return err
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&oraclev1.OracleBackup{}).
 		Complete(r)
+}
+
+func addBackupFieldIndexers(mgr manager.Manager) error {
+	return mgr.GetFieldIndexer().IndexField(context.TODO(), &oraclev1.OracleBackup{}, "spec.clusterName",
+		func(obj client.Object) []string {
+			ob := obj.(*oraclev1.OracleBackup)
+			return []string{ob.Spec.ClusterName}
+		})
 }

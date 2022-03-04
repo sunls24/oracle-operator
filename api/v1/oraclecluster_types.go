@@ -39,9 +39,16 @@ type OracleClusterSpec struct {
 	VolumeSpec VolumeSpec `json:"volumeSpec,omitempty"`
 }
 
+const (
+	ClusterStatusWaiting   = "Waiting"
+	ClusterStatusBackingUp = "BackingUp"
+	ClusterStatusRestoring = "Restoring"
+)
+
 // OracleClusterStatus defines the observed state of OracleCluster
 type OracleClusterStatus struct {
-	Ready corev1.ConditionStatus `json:"ready,omitempty"`
+	Ready  corev1.ConditionStatus `json:"ready,omitempty"`
+	Status string                 `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true

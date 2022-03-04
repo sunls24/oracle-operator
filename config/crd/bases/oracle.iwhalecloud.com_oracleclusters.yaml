@@ -485,6 +485,8 @@ spec:
             properties:
               ready:
                 type: string
+              status:
+                type: string
             type: object
         type: object
     served: true

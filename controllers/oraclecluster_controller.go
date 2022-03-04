@@ -80,13 +80,9 @@ func (r *OracleClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, err
 	}
 
-	if oc.DeletionTimestamp != nil {
-		return ctrl.Result{}, nil
-	}
-
 	r.log.Info("Start Reconcile")
 
-	if exit, err := r.backupFinalizer(ctx, oc); exit {
+	if exit, err := r.clusterFinalizer(ctx, oc); exit {
 		return ctrl.Result{}, err
 	}
 
@@ -112,7 +108,7 @@ func (r *OracleClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	return ctrl.Result{}, err
 }
 
-func (r *OracleClusterReconciler) backupFinalizer(ctx context.Context, oc *oraclev1.OracleCluster) (bool, error) {
+func (r *OracleClusterReconciler) clusterFinalizer(ctx context.Context, oc *oraclev1.OracleCluster) (bool, error) {
 	if oc.DeletionTimestamp == nil {
 		if !utils.AddFinalizer(oc, finalizerBackupDelete) {
 			return false, nil
@@ -128,7 +124,7 @@ func (r *OracleClusterReconciler) backupFinalizer(ctx context.Context, oc *oracl
 	}
 
 	backupList := oraclev1.OracleBackupList{}
-	err := r.Client.List(ctx, &backupList, client.MatchingLabels(map[string]string{"oracle": oc.Name}))
+	err := r.Client.List(ctx, &backupList, client.MatchingFields(map[string]string{"spec.clusterName": oc.Name}))
 	if err != nil {
 		return true, err
 	}
