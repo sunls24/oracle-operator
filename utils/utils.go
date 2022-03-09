@@ -10,6 +10,7 @@ import (
 	"os"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"strconv"
+	"time"
 )
 
 func MergeEnv(src, ex []corev1.EnvVar) []corev1.EnvVar {
@@ -106,4 +107,32 @@ func DeleteFinalizer(obj metav1.Object, finalizer string) bool {
 	}
 	obj.SetFinalizers(newList)
 	return len(fs) != len(newList)
+}
+
+func Retry(action func(int) bool, duration time.Duration, count int, immediate bool) func() {
+	if immediate && action(0) {
+		return nil
+	}
+	var stopped bool
+	stopC := make(chan struct{}, 1)
+	go func() {
+		defer func() { stopped = true; close(stopC) }()
+		ticker := time.NewTicker(duration)
+		for i := 1; i < count; i++ {
+			select {
+			case <-stopC:
+				return
+			case <-ticker.C:
+				if action(i) {
+					return
+				}
+			}
+		}
+	}()
+	return func() {
+		if stopped {
+			return
+		}
+		stopC <- struct{}{}
+	}
 }

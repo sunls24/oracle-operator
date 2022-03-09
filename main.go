@@ -108,6 +108,13 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "OracleBackup")
 		os.Exit(1)
 	}
+	if err = (&controllers.OracleBackupCronReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "OracleBackupCron")
+		os.Exit(1)
+	}
 	if err = (&controllers.OracleRestoreReconciler{
 		Clientset: clientset,
 		Config:    mgr.GetConfig(),

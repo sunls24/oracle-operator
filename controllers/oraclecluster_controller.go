@@ -40,6 +40,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const finalizerBackupDelete = "backup-delete"
@@ -82,8 +83,8 @@ func (r *OracleClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	r.log.Info("Start Reconcile")
 
-	if exit, err := r.clusterFinalizer(ctx, oc); exit {
-		return ctrl.Result{}, err
+	if exit, result, err := r.clusterFinalizer(ctx, oc); exit {
+		return result, err
 	}
 
 	old := oc.DeepCopy()
@@ -108,36 +109,36 @@ func (r *OracleClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	return ctrl.Result{}, err
 }
 
-func (r *OracleClusterReconciler) clusterFinalizer(ctx context.Context, oc *oraclev1.OracleCluster) (bool, error) {
+func (r *OracleClusterReconciler) clusterFinalizer(ctx context.Context, oc *oraclev1.OracleCluster) (bool, ctrl.Result, error) {
 	if oc.DeletionTimestamp == nil {
 		if !utils.AddFinalizer(oc, finalizerBackupDelete) {
-			return false, nil
+			return false, ctrl.Result{}, nil
 		}
 		err := r.Client.Update(ctx, oc)
 		if err != nil {
 			r.log.Error(err, "add finalizer error")
 		}
-		return false, nil
+		return false, ctrl.Result{}, nil
 	}
 	if !utils.DeleteFinalizer(oc, finalizerBackupDelete) {
-		return true, nil
+		return true, ctrl.Result{}, nil
 	}
 
 	backupList := oraclev1.OracleBackupList{}
 	err := r.Client.List(ctx, &backupList, client.MatchingFields(map[string]string{"spec.clusterName": oc.Name}))
 	if err != nil {
-		return true, err
+		return true, ctrl.Result{}, err
 	}
 	if len(backupList.Items) == 0 {
-		return true, r.Client.Update(ctx, oc)
+		return true, ctrl.Result{}, r.Client.Update(ctx, oc)
 	}
 	for i := range backupList.Items {
 		err = r.Client.Delete(ctx, &backupList.Items[i])
 		if err != nil {
-			return true, err
+			return true, ctrl.Result{}, err
 		}
 	}
-	return true, r.Client.Update(ctx, oc)
+	return true, ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 }
 
 func decodePWD(in string) ([]byte, error) {

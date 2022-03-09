@@ -48,6 +48,12 @@ spec:
             properties:
               archiveMode:
                 type: boolean
+              backupHistoryLimit:
+                type: integer
+              backupSchedule:
+                type: string
+              backupSecretName:
+                type: string
               image:
                 type: string
               nodePort:

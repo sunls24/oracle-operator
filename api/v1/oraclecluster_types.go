@@ -37,6 +37,10 @@ type OracleClusterSpec struct {
 	ArchiveMode bool   `json:"archiveMode,omitempty"`
 	StartupMode string `json:"startupMode,omitempty"`
 
+	BackupSchedule     string `json:"backupSchedule,omitempty"`
+	BackupHistoryLimit int    `json:"backupHistoryLimit,omitempty"`
+	BackupSecretName   string `json:"backupSecretName,omitempty"`
+
 	PodSpec    PodSpec    `json:"podSpec,omitempty"`
 	VolumeSpec VolumeSpec `json:"volumeSpec,omitempty"`
 }

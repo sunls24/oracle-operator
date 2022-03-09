@@ -33,6 +33,7 @@ import (
 	"oracle-operator/utils/options"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"strings"
@@ -98,7 +99,16 @@ func (r *OracleBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	if oc.Status.Status != oraclev1.ClusterStatusTrue && oc.Status.Status != oraclev1.ClusterStatusBackingUp {
 		r.log.Info("oracle status is not true, wait 5s", "oracle", oc.Name, "status", oc.Status.Status)
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		return wait5s, nil
+	}
+
+	runningList, err := BackupRunningList(ctx, r.Client, oc.Name)
+	if err != nil {
+		return ctrl.Result{}, xerr.Wrap(err, "backup running list")
+	}
+	if len(runningList) != 0 {
+		r.log.Info("at least a backup is running, wait 5s")
+		return wait5s, nil
 	}
 
 	oraclePod, err := oc.GetPod(ctx, r.Client)
@@ -236,6 +246,22 @@ func (r *OracleBackupReconciler) execCommand(namespace, podName, container, comm
 	return utils.ExecCommand(r.Clientset, r.Config, namespace, podName, container, []string{"sh", "-c", command})
 }
 
+func BackupRunningList(ctx context.Context, c client.Client, clusterName string) ([]oraclev1.OracleBackup, error) {
+	list := oraclev1.OracleBackupList{}
+	err := c.List(ctx, &list, client.MatchingFields{"status.backupStatus": constants.StatusRunning})
+	if err != nil || len(list.Items) == 0 {
+		return list.Items, err
+	}
+
+	filter := make([]oraclev1.OracleBackup, 0)
+	for _, bak := range list.Items {
+		if bak.Spec.ClusterName == clusterName {
+			filter = append(filter, bak)
+		}
+	}
+	return filter, err
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *OracleBackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.recorder = mgr.GetEventRecorderFor("oraclebackup-controller")
@@ -246,13 +272,20 @@ func (r *OracleBackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&oraclev1.OracleBackup{}).
+		WithOptions(controller.Options{MaxConcurrentReconciles: 2}).
 		Complete(r)
 }
 
 func addBackupFieldIndexers(mgr manager.Manager) error {
+	err := mgr.GetFieldIndexer().IndexField(context.TODO(), &oraclev1.OracleBackup{}, "status.backupStatus",
+		func(obj client.Object) []string {
+			return []string{obj.(*oraclev1.OracleBackup).Status.BackupStatus}
+		})
+	if err != nil {
+		return err
+	}
 	return mgr.GetFieldIndexer().IndexField(context.TODO(), &oraclev1.OracleBackup{}, "spec.clusterName",
 		func(obj client.Object) []string {
-			ob := obj.(*oraclev1.OracleBackup)
-			return []string{ob.Spec.ClusterName}
+			return []string{obj.(*oraclev1.OracleBackup).Spec.ClusterName}
 		})
 }
