@@ -23,6 +23,7 @@ import (
 	xerr "github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -159,6 +160,10 @@ func (r *OracleBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	ob.Status.BackupTag = backupTag
 	ob.Status.BackupStatus = constants.StatusCompleted
+	if ob.Status.CompletedTime == nil || ob.Status.CompletedTime.IsZero() {
+		t := metav1.NewTime(time.Now())
+		ob.Status.CompletedTime = &t
+	}
 	return ctrl.Result{}, nil
 }
 

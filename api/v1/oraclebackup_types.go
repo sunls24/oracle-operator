@@ -31,8 +31,9 @@ type OracleBackupSpec struct {
 
 // OracleBackupStatus defines the observed state of OracleBackup
 type OracleBackupStatus struct {
-	BackupStatus string `json:"backupStatus,omitempty"`
-	BackupTag    string `json:"backupTag,omitempty"`
+	BackupStatus  string       `json:"backupStatus,omitempty"`
+	BackupTag     string       `json:"backupTag,omitempty"`
+	CompletedTime *metav1.Time `json:"completedTime,omitempty"`
 }
 
 //+kubebuilder:object:root=true
