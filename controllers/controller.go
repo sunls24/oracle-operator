@@ -11,5 +11,5 @@ func key(namespace, name string) types.NamespacedName {
 }
 
 var (
-	wait5s = ctrl.Result{RequeueAfter: 5 * time.Second}
+	wait10s = ctrl.Result{RequeueAfter: 10 * time.Second}
 )

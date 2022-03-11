@@ -100,7 +100,7 @@ func (r *OracleBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	if oc.Status.Status != oraclev1.ClusterStatusTrue && oc.Status.Status != oraclev1.ClusterStatusBackingUp {
 		r.log.Info("oracle status is not true, wait 5s", "oracle", oc.Name, "status", oc.Status.Status)
-		return wait5s, nil
+		return wait10s, nil
 	}
 
 	runningList, err := BackupRunningList(ctx, r.Client, oc.Name)
@@ -109,7 +109,7 @@ func (r *OracleBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 	if len(runningList) != 0 {
 		r.log.Info("at least a backup is running, wait 5s")
-		return wait5s, nil
+		return wait10s, nil
 	}
 
 	oraclePod, err := oc.GetPod(ctx, r.Client)
@@ -216,7 +216,7 @@ func (r *OracleBackupReconciler) osbwsInstallCmd(ctx context.Context, ob *oracle
 		return command, err
 	}
 
-	oracleSID := oc.Spec.PodSpec.OracleSID
+	oracleSID := strings.ToUpper(oc.Spec.PodSpec.OracleSID)
 	awsID := string(secret.Data[constants.SecretAWSID])
 	awsKey := string(secret.Data[constants.SecretAWSKey])
 	if len(awsID) == 0 || len(awsKey) == 0 {
@@ -240,7 +240,7 @@ func (r *OracleBackupReconciler) osbwsInstallCmd(ctx context.Context, ob *oracle
 
 func (r *OracleBackupReconciler) backupCommand(oc *oraclev1.OracleCluster) (string, string) {
 	bakTAG := fmt.Sprintf("BAK%s", time.Now().Format("20060102T150405"))
-	return fmt.Sprintf(r.opt.BackupCmd, oc.Spec.PodSpec.OracleSID, bakTAG), bakTAG
+	return fmt.Sprintf(r.opt.BackupCmd, strings.ToUpper(oc.Spec.PodSpec.OracleSID), bakTAG), bakTAG
 }
 
 func (r *OracleBackupReconciler) backupDeleteCommand(backupTag string) string {
