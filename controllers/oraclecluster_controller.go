@@ -90,6 +90,11 @@ func (r *OracleClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	old := oc.DeepCopy()
 	oc.SetDefault()
 
+	err = r.reconcileConfigmap(ctx, oc)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
 	err = r.reconcileSecret(ctx, oc)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -147,6 +152,24 @@ func decodePWD(in string) ([]byte, error) {
 		return nil, fmt.Errorf(".spec.password must be base64: %v", err)
 	}
 	return pwd, nil
+}
+
+func (r *OracleClusterReconciler) reconcileConfigmap(ctx context.Context, oc *oraclev1.OracleCluster) error {
+	r.log.Info("Reconcile Configmap")
+	configmap := &corev1.ConfigMap{}
+	err := r.Get(ctx, key(oc.Namespace, oc.UniteName()), configmap)
+	if err == nil {
+		return nil
+	} else if !errors.IsNotFound(err) {
+		return err
+	}
+
+	oc.SetObject(configmap)
+	if err = ctrl.SetControllerReference(oc, configmap, r.Scheme); err != nil {
+		return err
+	}
+	configmap.Data = constants.GetSetup(oc.Spec.PodSpec.OracleSID, "", "", "", "")
+	return r.eventCreated(r.Create(ctx, configmap), oc, "ConfigMap", configmap.Name)
 }
 
 func (r *OracleClusterReconciler) reconcileSecret(ctx context.Context, oc *oraclev1.OracleCluster) error {
@@ -284,13 +307,16 @@ func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, oc *
 		podSpec.Containers[0].ReadinessProbe.InitialDelaySeconds = 60
 		podSpec.Containers[0].ReadinessProbe.PeriodSeconds = 60
 		podSpec.Containers[0].ReadinessProbe.TimeoutSeconds = 60
-		if len(podSpec.Containers[0].VolumeMounts) != 1 {
-			podSpec.Containers[0].VolumeMounts = make([]corev1.VolumeMount, 1)
+		if len(podSpec.Containers[0].VolumeMounts) != 2 {
+			podSpec.Containers[0].VolumeMounts = make([]corev1.VolumeMount, 2)
 		}
-		podSpec.Containers[0].VolumeMounts[0].MountPath = "/opt/oracle/oradata"
 		podSpec.Containers[0].VolumeMounts[0].Name = constants.OracleVolumeName
+		podSpec.Containers[0].VolumeMounts[0].MountPath = constants.OracleMountPath
 		podSpec.Containers[0].Resources = oc.Spec.PodSpec.Resources
 		podSpec.Containers[0].Env = oracleEnv
+
+		podSpec.Containers[0].VolumeMounts[1].Name = constants.SetupVolumeName
+		podSpec.Containers[0].VolumeMounts[1].MountPath = constants.SetupMountPath
 
 		// container cli
 		podSpec.Containers[1].Name = constants.ContainerOracleCli
@@ -318,6 +344,18 @@ func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, oc *
 		// user/password@myhost:1521/service
 		source := fmt.Sprintf("%s/%s@127.0.0.1:1521/%s", constants.DefaultExporterUser, pwd, strings.ToUpper(oc.Spec.PodSpec.OracleSID))
 		podSpec.Containers[2].Env = []corev1.EnvVar{{Name: "DATA_SOURCE_NAME", Value: source}}
+
+		if len(podSpec.Volumes) != 1 {
+			podSpec.Volumes = make([]corev1.Volume, 1)
+		}
+		// configmap volume
+		podSpec.Volumes[0] = corev1.Volume{
+			Name: constants.SetupVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: oc.UniteName()}},
+			},
+		}
+
 		statefulSet.Spec.Template.Spec = podSpec
 
 		if len(statefulSet.Spec.VolumeClaimTemplates) != 1 {

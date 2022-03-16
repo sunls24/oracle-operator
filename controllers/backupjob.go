@@ -95,7 +95,7 @@ func (cj *BackupJob) createBackup(i int) bool {
 
 	backupLabel := oc.ClusterLabel()
 	backupLabel["auto"] = "true"
-	backupName := fmt.Sprintf("auto-%s-%s", cj.Cluster.Name, time.Now().Format("20060102t150405"))
+	backupName := fmt.Sprintf("auto-%s-%s", cj.Cluster.Name, time.Now().Format("060102t150405"))
 	backup := &oraclev1.OracleBackup{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      backupName,
