@@ -58,6 +58,60 @@ type OracleBackupReconciler struct {
 	recorder record.EventRecorder
 }
 
+// Start 清理备份状态, 仅在首次运行执行
+// 状态为 Running 的备份和恢复将状态设置为 Failed
+// 设置 Oracle 的 Status 为 Ready 的状态
+func (r *OracleBackupReconciler) Start(ctx context.Context) error {
+	l := log.FromContext(ctx).WithName("BackupStatusClean")
+	backupList := oraclev1.OracleBackupList{}
+	err := r.List(ctx, &backupList)
+	if err != nil {
+		l.Error(err, "get oracle backup list error")
+	}
+	// 在Operator进程启动时状态为Running的备份属于异常备份,
+	// 原备份进程已停止, 但状态未被设置, 会导致此备份无法正常进行(协调时会跳过)
+	for _, bak := range backupList.Items {
+		if bak.Status.BackupStatus != constants.StatusRunning {
+			continue
+		}
+		bak.Status.BackupStatus = constants.StatusFailed
+		if err = r.Status().Update(ctx, &bak); err != nil {
+			l.Error(err, "update backup status error")
+		}
+	}
+
+	restoreList := oraclev1.OracleRestoreList{}
+	if err = r.List(ctx, &restoreList); err != nil {
+		l.Error(err, "get oracle restore list error")
+	}
+
+	for _, restore := range restoreList.Items {
+		if restore.Status.RestoreStatus != constants.StatusRunning {
+			continue
+		}
+		restore.Status.RestoreStatus = constants.StatusFailed
+		if err = r.Status().Update(ctx, &restore); err != nil {
+			l.Error(err, "update restore status error")
+		}
+	}
+
+	oraList := oraclev1.OracleClusterList{}
+	if err = r.List(ctx, &oraList); err != nil {
+		l.Error(err, "get oracle list error")
+	}
+
+	for _, oc := range oraList.Items {
+		if oc.Status.Status != oraclev1.ClusterStatusRestoring && oc.Status.Status != oraclev1.ClusterStatusBackingUp {
+			continue
+		}
+		oc.Status.Status = oraclev1.ClusterStatusWaiting
+		if err = r.Status().Update(ctx, &oc); err != nil {
+			l.Error(err, "update oracle status error")
+		}
+	}
+	return nil
+}
+
 //+kubebuilder:rbac:groups=oracle.iwhalecloud.com,resources=oraclebackups,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=oracle.iwhalecloud.com,resources=oraclebackups/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=oracle.iwhalecloud.com,resources=oraclebackups/finalizers,verbs=update
