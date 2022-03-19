@@ -168,7 +168,7 @@ func (r *OracleClusterReconciler) reconcileConfigmap(ctx context.Context, oc *or
 	if err = ctrl.SetControllerReference(oc, configmap, r.Scheme); err != nil {
 		return err
 	}
-	configmap.Data = constants.GetSetup(oc.Spec.PodSpec.OracleSID, "", "", "", "")
+	configmap.Data = constants.GetSetupSQL(oc.Spec.OracleSID, oc.Spec.TablespaceList, oc.Spec.UserList)
 	return r.eventCreated(r.Create(ctx, configmap), oc, "ConfigMap", configmap.Name)
 }
 
@@ -249,8 +249,8 @@ func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, oc *
 		baseEnv := []corev1.EnvVar{
 			{Name: "SVC_HOST", Value: oc.Name},
 			{Name: "SVC_PORT", Value: "1521"},
-			{Name: "ORACLE_SID", Value: oc.Spec.PodSpec.OracleSID},
-			{Name: "ORACLE_PDB", Value: fmt.Sprintf("%sPDB", oc.Spec.PodSpec.OracleSID)},
+			{Name: "ORACLE_SID", Value: oc.Spec.OracleSID},
+			{Name: "ORACLE_PDB", Value: fmt.Sprintf("%sPDB", oc.Spec.OracleSID)},
 			{Name: "ORACLE_PWD", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: oc.UniteName()}, Key: constants.OraclePWD}}},
 		}
 		// PGA和SGA的大小配置只在首次配置，后续规格变更大小不会变化
@@ -342,7 +342,7 @@ func (r *OracleClusterReconciler) reconcileStatefulSet(ctx context.Context, oc *
 			return err
 		}
 		// user/password@myhost:1521/service
-		source := fmt.Sprintf("%s/%s@127.0.0.1:1521/%s", constants.DefaultExporterUser, pwd, strings.ToUpper(oc.Spec.PodSpec.OracleSID))
+		source := fmt.Sprintf("%s/%s@127.0.0.1:1521/%s", constants.DefaultExporterUser, pwd, strings.ToUpper(oc.Spec.OracleSID))
 		podSpec.Containers[2].Env = []corev1.EnvVar{{Name: "DATA_SOURCE_NAME", Value: source}}
 
 		if len(podSpec.Volumes) != 1 {

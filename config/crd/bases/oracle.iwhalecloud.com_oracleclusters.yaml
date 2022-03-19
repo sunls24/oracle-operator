@@ -59,6 +59,8 @@ spec:
               nodePort:
                 format: int32
                 type: integer
+              oracleSID:
+                type: string
               password:
                 type: string
               podSpec:
@@ -289,8 +291,6 @@ spec:
                       - name
                       type: object
                     type: array
-                  oracleSID:
-                    type: string
                   resources:
                     description: ResourceRequirements describes the compute resource
                       requirements.
@@ -321,6 +321,26 @@ spec:
                 type: object
               startupMode:
                 type: string
+              tablespaceList:
+                items:
+                  properties:
+                    name:
+                      type: string
+                    size:
+                      type: integer
+                  type: object
+                type: array
+              userList:
+                items:
+                  properties:
+                    name:
+                      type: string
+                    password:
+                      type: string
+                    tablespace:
+                      type: string
+                  type: object
+                type: array
               volumeSpec:
                 properties:
                   persistentVolumeClaim:

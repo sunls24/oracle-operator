@@ -1,6 +1,10 @@
 package constants
 
-import "fmt"
+import (
+	"fmt"
+	v1 "oracle-operator/api/v1"
+	"strings"
+)
 
 const (
 	DefaultOSBWSInstallCmd = `
@@ -59,70 +63,87 @@ EOF`
 )
 
 const (
-	setup01Name = "01_createTablespace_19c.sql"
-	setup01     = `-- 01 create tablespace
-alter session set container=CBPDB;
-create tablespace %s datafile '%s/%s/%s/%s_01.dbf' size 2048m autoextend off;`  // TODO: PDB, SIZE
-
 	setup02Name = "02_createProfile_19c.sql"
 	setup02     = `-- 02 create profile
-alter session set container=CBPDB;
 create profile ZSMART limit
- sessions_per_user unlimited
- cpu_per_session unlimited
- cpu_per_call unlimited
- connect_time unlimited
- idle_time unlimited
- logical_reads_per_session unlimited
- logical_reads_per_call unlimited
- composite_limit unlimited
- private_sga unlimited
- failed_login_attempts unlimited
- password_life_time unlimited
- password_reuse_time unlimited
- password_reuse_max unlimited
- password_lock_time 1/24
- password_grace_time 7
- password_verify_function ORA12C_VERIFY_FUNCTION;`
+sessions_per_user unlimited
+cpu_per_session unlimited
+cpu_per_call unlimited
+connect_time unlimited
+idle_time unlimited
+logical_reads_per_session unlimited
+logical_reads_per_call unlimited
+composite_limit unlimited
+private_sga unlimited
+failed_login_attempts unlimited
+password_life_time unlimited
+password_reuse_time unlimited
+password_reuse_max unlimited
+password_lock_time 1/24
+password_grace_time 7
+password_verify_function ORA12C_VERIFY_FUNCTION;`
 
-	setup03Name = "03_createUser_19c.sql"
-	setup03     = `-- 03 create user
-alter session set container=CBPDB;
-create user %s identified by "%s" default tablespace %s profile ZSMART;`
-
-	setup04Name = "04_grantPrivilegeToUser_19c.sql"
-	setup04     = `-- 04 grant privilege to user
-alter session set container=CBPDB;
-grant SET CONTAINER to CC;
-grant CREATE SESSION to CC;
-grant CREATE TRIGGER to CC;
-grant CREATE SEQUENCE to CC;
-grant CREATE TYPE to CC;
-grant CREATE PROCEDURE to CC;
-grant CREATE CLUSTER to CC;
-grant CREATE OPERATOR to CC;
-grant CREATE INDEXTYPE to CC;
-grant CREATE TABLE to CC;
-grant CREATE SYNONYM to CC;
-grant CREATE VIEW to CC;
-grant CREATE MATERIALIZED VIEW to CC;
-grant CREATE DATABASE LINK to CC;
-grant ALTER SESSION to CC;
-grant DEBUG ANY PROCEDURE to CC;
-grant DEBUG CONNECT SESSION to CC;
-grant SELECT ANY TABLE to CC;
-grant SELECT ANY TRANSACTION to CC;
-grant CREATE JOB to CC;
-grant EXP_FULL_DATABASE to CC;
-grant IMP_FULL_DATABASE to CC;
-grant UNLIMITED TABLESPACE to CC;`
+	grantPrivilege = `grant SET CONTAINER to $USER;
+grant CREATE SESSION to $USER;
+grant CREATE TRIGGER to $USER;
+grant CREATE SEQUENCE to $USER;
+grant CREATE TYPE to $USER
+grant CREATE PROCEDURE to $USER;
+grant CREATE CLUSTER to $USER;
+grant CREATE OPERATOR to $USER;
+grant CREATE INDEXTYPE to $USER;
+grant CREATE TABLE to $USER;
+grant CREATE SYNONYM to $USER;
+grant CREATE VIEW to $USER;
+grant CREATE MATERIALIZED VIEW to $USER;
+grant CREATE DATABASE LINK to $USER;
+grant ALTER SESSION to $USER;
+grant DEBUG ANY PROCEDURE to $USER;
+grant DEBUG CONNECT SESSION to $USER;
+grant SELECT ANY TABLE to $USER;
+grant SELECT ANY TRANSACTION to $USER;
+grant CREATE JOB to $USER;
+grant EXP_FULL_DATABASE to $USER;
+grant IMP_FULL_DATABASE to $USER;
+grant UNLIMITED TABLESPACE to $USER;`
 )
 
-func GetSetup(sid, pdb, tablespace, user, password string) map[string]string {
+func GetSetupSQL(sid string, tablespaceList []v1.Tablespace, userList []v1.User) map[string]string {
+	sid = strings.ToUpper(sid)
+	setup01Name, setup01 := createTablespace01(tablespaceList, sid)
+	setup03Name, setup03 := createUser03(userList)
+	setup04Name, setup04 := grantPrivilege04(userList)
 	return map[string]string{
-		setup01Name: fmt.Sprintf(setup01, tablespace, OracleMountPath, sid, pdb, tablespace),
+		setup01Name: setup01,
 		setup02Name: setup02,
-		setup03Name: fmt.Sprintf(setup03, user, password, tablespace),
+		setup03Name: setup03,
 		setup04Name: setup04,
 	}
+}
+
+func createTablespace01(list []v1.Tablespace, sid string) (string, string) {
+	sqlList := make([]string, len(list))
+	for _, v := range list {
+		sqlList = append(sqlList,
+			fmt.Sprintf("create tablespace %s datafile '%s/%s/%s_01.dbf' size %dm autoextend off;", v.Name, OracleMountPath, sid, v.Name, v.Size))
+	}
+	return "01_createTablespace_19c.sql", fmt.Sprintf("-- 01 create tablespace\n%s", strings.Join(sqlList, "\n"))
+}
+
+func createUser03(list []v1.User) (string, string) {
+	sqlList := make([]string, len(list))
+	for _, u := range list {
+		sqlList = append(sqlList,
+			fmt.Sprintf(`create user %s identified by "%s" default tablespace %s profile ZSMART;`, u.Name, u.Password, u.Tablespace))
+	}
+
+	return "03_createUser_19c.sql", fmt.Sprintf("-- 03 create user\n%s", strings.Join(sqlList, "\n"))
+}
+
+func grantPrivilege04(list []v1.User) (string, string) {
+	sqlList := make([]string, len(list))
+	for _, u := range list {
+		sqlList = append(sqlList, strings.ReplaceAll(grantPrivilege, "$USER", u.Name))
+	}
+	return "04_grantPrivilegeToUser_19c.sql", fmt.Sprintf("-- 04 grant privilege to user\n%s", strings.Join(sqlList, "\n"))
 }

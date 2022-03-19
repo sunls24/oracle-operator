@@ -270,7 +270,7 @@ func (r *OracleBackupReconciler) osbwsInstallCmd(ctx context.Context, ob *oracle
 		return command, err
 	}
 
-	oracleSID := strings.ToUpper(oc.Spec.PodSpec.OracleSID)
+	oracleSID := strings.ToUpper(oc.Spec.OracleSID)
 	awsID := string(secret.Data[constants.SecretAWSID])
 	awsKey := string(secret.Data[constants.SecretAWSKey])
 	if len(awsID) == 0 || len(awsKey) == 0 {
@@ -294,7 +294,7 @@ func (r *OracleBackupReconciler) osbwsInstallCmd(ctx context.Context, ob *oracle
 
 func (r *OracleBackupReconciler) backupCommand(oc *oraclev1.OracleCluster) (string, string) {
 	bakTAG := fmt.Sprintf("BAK%s", time.Now().Format("20060102T150405"))
-	return fmt.Sprintf(r.opt.BackupCmd, strings.ToUpper(oc.Spec.PodSpec.OracleSID), bakTAG), bakTAG
+	return fmt.Sprintf(r.opt.BackupCmd, strings.ToUpper(oc.Spec.OracleSID), bakTAG), bakTAG
 }
 
 func (r *OracleBackupReconciler) backupDeleteCommand(backupTag string) string {
@@ -327,6 +327,9 @@ func (r *OracleBackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.opt = options.GetOptions()
 
 	if err := addBackupFieldIndexers(mgr); err != nil {
+		return err
+	}
+	if err := mgr.Add(r); err != nil {
 		return err
 	}
 	return ctrl.NewControllerManagedBy(mgr).

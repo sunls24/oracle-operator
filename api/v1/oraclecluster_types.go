@@ -31,9 +31,14 @@ import (
 
 // OracleClusterSpec defines the desired state of OracleCluster
 type OracleClusterSpec struct {
-	Image       string `json:"image,omitempty"`
-	Password    string `json:"password,omitempty"`
-	NodePort    int32  `json:"nodePort,omitempty"`
+	Image     string `json:"image,omitempty"`
+	Password  string `json:"password,omitempty"`
+	NodePort  int32  `json:"nodePort,omitempty"`
+	OracleSID string `json:"oracleSID,omitempty"`
+
+	TablespaceList []Tablespace `json:"tablespaceList,omitempty"`
+	UserList       []User       `json:"userList,omitempty"`
+
 	ArchiveMode bool   `json:"archiveMode,omitempty"`
 	StartupMode string `json:"startupMode,omitempty"`
 
@@ -43,6 +48,17 @@ type OracleClusterSpec struct {
 
 	PodSpec    PodSpec    `json:"podSpec,omitempty"`
 	VolumeSpec VolumeSpec `json:"volumeSpec,omitempty"`
+}
+
+type Tablespace struct {
+	Name string `json:"name,omitempty"`
+	Size int    `json:"size,omitempty"`
+}
+
+type User struct {
+	Name       string `json:"name,omitempty"`
+	Password   string `json:"password,omitempty"`
+	Tablespace string `json:"tablespace,omitempty"`
 }
 
 const (
@@ -87,7 +103,6 @@ type PodSpec struct {
 	Resources       corev1.ResourceRequirements `json:"resources,omitempty"`
 	NodeSelector    map[string]string           `json:"nodeSelector,omitempty"`
 
-	OracleSID    string          `json:"oracleSID,omitempty"`
 	OracleEnv    []corev1.EnvVar `json:"oracleEnv,omitempty"`
 	OracleCLIEnv []corev1.EnvVar `json:"oracleCliEnv,omitempty"`
 }
@@ -139,8 +154,8 @@ func (in *OracleCluster) SetDefault() {
 	if len(in.Spec.PodSpec.ImagePullPolicy) == 0 {
 		in.Spec.PodSpec.ImagePullPolicy = constants.DefaultPullPolicy
 	}
-	if len(in.Spec.PodSpec.OracleSID) == 0 {
-		in.Spec.PodSpec.OracleSID = constants.DefaultOracleSID
+	if len(in.Spec.OracleSID) == 0 {
+		in.Spec.OracleSID = constants.DefaultOracleSID
 	}
 }
 

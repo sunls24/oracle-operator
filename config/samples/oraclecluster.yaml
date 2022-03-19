@@ -9,8 +9,8 @@ spec:
   replicas: 1
   password: enRlc29mdA==  # must be base64
   nodePort: 32233
+  oracleSID: CC
   podSpec:
-    oracleSID: CC
     nodeSelector:
       iwhalecloud.oraclenode: oracle
     imagePullPolicy: Always
