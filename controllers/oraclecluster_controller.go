@@ -168,7 +168,7 @@ func (r *OracleClusterReconciler) reconcileConfigmap(ctx context.Context, oc *or
 	if err = ctrl.SetControllerReference(oc, configmap, r.Scheme); err != nil {
 		return err
 	}
-	configmap.Data = constants.GetSetupSQL(oc.Spec.OracleSID, oc.Spec.TablespaceList, oc.Spec.UserList)
+	configmap.Data = oc.GetSetupSQL()
 	return r.eventCreated(r.Create(ctx, configmap), oc, "ConfigMap", configmap.Name)
 }
 
