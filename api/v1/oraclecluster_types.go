@@ -198,7 +198,7 @@ password_verify_function ORA12C_VERIFY_FUNCTION;`
 grant CREATE SESSION to $USER;
 grant CREATE TRIGGER to $USER;
 grant CREATE SEQUENCE to $USER;
-grant CREATE TYPE to $USER
+grant CREATE TYPE to $USER;
 grant CREATE PROCEDURE to $USER;
 grant CREATE CLUSTER to $USER;
 grant CREATE OPERATOR to $USER;
@@ -234,18 +234,16 @@ func (in *OracleCluster) GetSetupSQL() map[string]string {
 
 func createTablespace01(list []Tablespace, sid string) (string, string) {
 	sqlList := make([]string, len(list))
-	for _, v := range list {
-		sqlList = append(sqlList,
-			fmt.Sprintf("create tablespace %s datafile '%s/%s/%s_01.dbf' size %dm autoextend off;", v.Name, constants.OracleMountPath, sid, v.Name, v.Size))
+	for i, v := range list {
+		sqlList[i] = fmt.Sprintf("create tablespace %s datafile '%s/%s/%s_01.dbf' size %dm autoextend off;", v.Name, constants.OracleMountPath, sid, v.Name, v.Size)
 	}
 	return "01_createTablespace_19c.sql", fmt.Sprintf("-- 01 create tablespace\n%s", strings.Join(sqlList, "\n"))
 }
 
 func createUser03(list []User) (string, string) {
 	sqlList := make([]string, len(list))
-	for _, u := range list {
-		sqlList = append(sqlList,
-			fmt.Sprintf(`create user %s identified by "%s" default tablespace %s profile ZSMART;`, u.Name, u.Password, u.Tablespace))
+	for i, u := range list {
+		sqlList[i] = fmt.Sprintf(`create user %s identified by "%s" default tablespace %s profile ZSMART;`, u.Name, u.Password, u.Tablespace)
 	}
 
 	return "03_createUser_19c.sql", fmt.Sprintf("-- 03 create user\n%s", strings.Join(sqlList, "\n"))
@@ -253,8 +251,8 @@ func createUser03(list []User) (string, string) {
 
 func grantPrivilege04(list []User) (string, string) {
 	sqlList := make([]string, len(list))
-	for _, u := range list {
-		sqlList = append(sqlList, strings.ReplaceAll(grantPrivilege, "$USER", u.Name))
+	for i, u := range list {
+		sqlList[i] = strings.ReplaceAll(grantPrivilege, "$USER", u.Name)
 	}
 	return "04_grantPrivilegeToUser_19c.sql", fmt.Sprintf("-- 04 grant privilege to user\n%s", strings.Join(sqlList, "\n"))
 }

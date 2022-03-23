@@ -11,7 +11,7 @@ const (
 	OracleMountPath  = "/opt/oracle/oradata"
 
 	SetupVolumeName = "setup"
-	SetupMountPath  = "/martin/oraclesetup/"
+	SetupMountPath  = "/opt/oracle/scripts/setup"
 
 	InitPGASize      = "INIT_PGA_SIZE"
 	InitPGALimitSize = "INIT_PGA_LIMIT_SIZE"
