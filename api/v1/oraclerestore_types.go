@@ -36,6 +36,7 @@ type OracleRestoreStatus struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+//+kubebuilder:printcolumn:name="Cluster",type="string",JSONPath=".spec.clusterName"
 //+kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.restoreStatus"
 //+kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 //+kubebuilder:resource:shortName=oraclerestore
