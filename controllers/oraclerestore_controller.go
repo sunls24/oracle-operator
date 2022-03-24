@@ -28,6 +28,7 @@ import (
 	"oracle-operator/utils"
 	"oracle-operator/utils/constants"
 	"oracle-operator/utils/options"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -158,7 +159,18 @@ func (r *OracleRestoreReconciler) execCommand(namespace, podName, container, com
 func (r *OracleRestoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.recorder = mgr.GetEventRecorderFor("oraclerestore-controller")
 	r.opt = options.GetOptions()
+
+	if err := addRestoreFieldIndexers(mgr); err != nil {
+		return err
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&oraclev1.OracleRestore{}).
 		Complete(r)
+}
+
+func addRestoreFieldIndexers(mgr manager.Manager) error {
+	return mgr.GetFieldIndexer().IndexField(context.TODO(), &oraclev1.OracleRestore{}, "spec.clusterName",
+		func(obj client.Object) []string {
+			return []string{obj.(*oraclev1.OracleRestore).Spec.ClusterName}
+		})
 }

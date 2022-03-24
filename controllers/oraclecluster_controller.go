@@ -43,7 +43,7 @@ import (
 	"time"
 )
 
-const finalizerBackupDelete = "backup-delete"
+const finalizerDeleteBackupAndRestore = "delete-backup-and-restore"
 
 // OracleClusterReconciler reconciles a OracleCluster object
 type OracleClusterReconciler struct {
@@ -116,7 +116,7 @@ func (r *OracleClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 func (r *OracleClusterReconciler) clusterFinalizer(ctx context.Context, oc *oraclev1.OracleCluster) (bool, ctrl.Result, error) {
 	if oc.DeletionTimestamp == nil {
-		if !utils.AddFinalizer(oc, finalizerBackupDelete) {
+		if !utils.AddFinalizer(oc, finalizerDeleteBackupAndRestore) {
 			return false, ctrl.Result{}, nil
 		}
 		err := r.Client.Update(ctx, oc)
@@ -125,7 +125,7 @@ func (r *OracleClusterReconciler) clusterFinalizer(ctx context.Context, oc *orac
 		}
 		return false, ctrl.Result{}, nil
 	}
-	if !utils.DeleteFinalizer(oc, finalizerBackupDelete) {
+	if !utils.DeleteFinalizer(oc, finalizerDeleteBackupAndRestore) {
 		return true, ctrl.Result{}, nil
 	}
 
@@ -134,11 +134,23 @@ func (r *OracleClusterReconciler) clusterFinalizer(ctx context.Context, oc *orac
 	if err != nil {
 		return true, ctrl.Result{}, err
 	}
-	if len(backupList.Items) == 0 {
+	restoreList := oraclev1.OracleRestoreList{}
+	err = r.Client.List(ctx, &restoreList, client.MatchingFields(map[string]string{"spec.clusterName": oc.Name}))
+	if err != nil {
+		return true, ctrl.Result{}, err
+	}
+
+	if len(backupList.Items) == 0 && len(restoreList.Items) == 0 {
 		return true, ctrl.Result{}, r.Client.Update(ctx, oc)
 	}
 	for i := range backupList.Items {
 		err = r.Client.Delete(ctx, &backupList.Items[i])
+		if err != nil {
+			return true, ctrl.Result{}, err
+		}
+	}
+	for i := range restoreList.Items {
+		err = r.Client.Delete(ctx, &restoreList.Items[i])
 		if err != nil {
 			return true, ctrl.Result{}, err
 		}
