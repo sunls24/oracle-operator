@@ -41,25 +41,35 @@ func MergeEnv(src, ex []corev1.EnvVar) []corev1.EnvVar {
 /*
 InitMemorySize 计算初始化需要的PGA和SGA大小
 当限制内存*80%*20%<2GB时(memory<12.5G): SGA=(限制内存-2GB)*80%, PGA_TARGET=SGA/4, PGA_LIMIT=2048M
+其中当memory >7G && memory <12.5G 时, 不满足 PGA_TARGET * 2 = PGA_LIMIT, 使用下方公式：
+PGA_LIMIT=(限制内存/3.5), PGA_TARGET=PGA_LIMIT/2, SGA=PGA_TARGET*4
 当限制内存*80%*20%>=2GB时(memory>=12.5G)：SGA=限制内存*80%*80%, PGA_TARGET=限制内存*80%*20%*50%, PGA_LIMIT=限制内存*80%*20%
 Return: PGA_TARGET, PGA_LIMIT, SGA
 */
-const memoryLimit = 12800 // 12.5*1024
+
 func InitMemorySize(memory float64) (pgaTarget, pgaLimit, sga string) {
 	if memory <= 2048 {
 		// 内存值小于2G不做处理
 		return
 	}
-	if memory < memoryLimit {
-		pgaLimit = "2048"
-		sgaValue := (memory - 2048) * 0.8
-		sga = strconv.Itoa(int(sgaValue))
-		pgaTarget = strconv.Itoa(int(sgaValue / 4))
-	} else {
+	if memory >= 12800 { //12.5*1024=12800
+		// memory >= 12.5G
 		sga = strconv.Itoa(int(memory * 0.64))
 		pgaLimitValue := memory * 0.16
 		pgaLimit = strconv.Itoa(int(pgaLimitValue))
 		pgaTarget = strconv.Itoa(int(pgaLimitValue * 0.5))
+	} else if memory > 7168 { // 7*1024=7168
+		// memory > 7 && < 12.5
+		pgaLimitValue := memory / 3.5
+		pgaLimit = strconv.Itoa(int(pgaLimitValue))
+		pgaTarget = strconv.Itoa(int(pgaLimitValue / 2))
+		sga = strconv.Itoa(int(pgaLimitValue * 2)) // pgaTarget*4
+	} else {
+		// memory <= 7
+		pgaLimit = "2048"
+		sgaValue := (memory - 2048) * 0.8
+		sga = strconv.Itoa(int(sgaValue))
+		pgaTarget = strconv.Itoa(int(sgaValue / 4))
 	}
 	return
 }
