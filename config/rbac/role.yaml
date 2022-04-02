@@ -22,6 +22,8 @@ rules:
   - ""
   resources:
   - events
+  - pods
+  - pods/exec
   - secrets
   - services
   verbs:

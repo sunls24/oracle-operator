@@ -58,7 +58,7 @@ type OracleClusterReconciler struct {
 //+kubebuilder:rbac:groups=oracle.iwhalecloud.com,resources=oracleclusters,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=oracle.iwhalecloud.com,resources=oracleclusters/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=oracle.iwhalecloud.com,resources=oracleclusters/finalizers,verbs=update
-//+kubebuilder:rbac:groups=core,resources=secrets;services;events,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=core,resources=secrets;services;events;pods;pods/exec,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
