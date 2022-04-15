@@ -217,6 +217,9 @@ grant CREATE JOB to $USER;
 grant EXP_FULL_DATABASE to $USER;
 grant IMP_FULL_DATABASE to $USER;
 grant UNLIMITED TABLESPACE to $USER;`
+
+	setup05Name = "05-setDBCreateFile_19c.sql"
+	setup05     = "alter system set DB_CREATE_FILE_DEST='%s/%s/' scope=both;"
 )
 
 func (in *OracleCluster) GetSetupSQL() map[string]string {
@@ -229,6 +232,7 @@ func (in *OracleCluster) GetSetupSQL() map[string]string {
 		setup02Name: setup02,
 		setup03Name: setup03,
 		setup04Name: setup04,
+		setup05Name: fmt.Sprintf(setup05, constants.OracleMountPath, sid),
 	}
 }
 
